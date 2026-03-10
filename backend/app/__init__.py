@@ -1,0 +1,1 @@
+# Syntho Backend Application
