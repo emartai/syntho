@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from typing import List, Optional
 import uuid
-import pandas as pd
-import json
 from datetime import datetime
 from app.middleware.auth import get_current_user
 from app.services.supabase import get_supabase
 from app.services.storage import storage_service
+from app.services.schema_detector import detect_schema, SchemaDetectionError
 from app.models.schemas import DatasetResponse, DatasetListResponse, ErrorResponse
 from app.config import settings
 import magic
@@ -32,80 +31,6 @@ def detect_file_type(file_bytes: bytes, filename: str) -> str:
             return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         return 'application/octet-stream'
 
-
-def detect_schema(file_bytes: bytes, file_type: str) -> dict:
-    """
-    Detect schema from uploaded file.
-    Returns dict with columns, types, null percentages, and sample values.
-    """
-    try:
-        # Read file into pandas DataFrame
-        if file_type == 'text/csv' or file_type.endswith('csv'):
-            df = pd.read_csv(pd.io.common.BytesIO(file_bytes))
-        elif file_type == 'application/json':
-            df = pd.read_json(pd.io.common.BytesIO(file_bytes))
-        elif file_type == 'application/vnd.apache.parquet':
-            df = pd.read_parquet(pd.io.common.BytesIO(file_bytes))
-        elif 'spreadsheet' in file_type or file_type.endswith('xlsx'):
-            df = pd.read_excel(pd.io.common.BytesIO(file_bytes))
-        else:
-            raise ValueError(f"Unsupported file type: {file_type}")
-        
-        # Detect schema
-        schema = []
-        for column in df.columns:
-            col_data = df[column]
-            
-            # Determine type
-            if pd.api.types.is_numeric_dtype(col_data):
-                if pd.api.types.is_integer_dtype(col_data):
-                    col_type = "integer"
-                else:
-                    col_type = "float"
-            elif pd.api.types.is_datetime64_any_dtype(col_data):
-                col_type = "datetime"
-            elif pd.api.types.is_bool_dtype(col_data):
-                col_type = "boolean"
-            else:
-                # Check if categorical (low cardinality)
-                unique_ratio = col_data.nunique() / len(col_data)
-                if unique_ratio < 0.5:
-                    col_type = "categorical"
-                else:
-                    col_type = "text"
-            
-            # Calculate null percentage
-            null_pct = (col_data.isna().sum() / len(col_data)) * 100
-            
-            # Get sample values (first 3 non-null unique values)
-            sample_values = col_data.dropna().unique()[:3].tolist()
-            
-            # Convert numpy types to Python types for JSON serialization
-            sample_values = [
-                int(v) if isinstance(v, (pd.Int64Dtype, int)) and not isinstance(v, bool)
-                else float(v) if isinstance(v, (float, pd.Float64Dtype))
-                else str(v)
-                for v in sample_values
-            ]
-            
-            schema.append({
-                "name": str(column),
-                "type": col_type,
-                "null_percentage": round(null_pct, 2),
-                "sample_values": sample_values
-            })
-        
-        return {
-            "columns": schema,
-            "row_count": len(df),
-            "column_count": len(df.columns)
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to detect schema: {str(e)}"
-        )
 
 
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
@@ -174,7 +99,7 @@ async def upload_dataset(
             "file_type": file_type,
             "row_count": schema_info["row_count"],
             "column_count": schema_info["column_count"],
-            "schema": {"columns": schema_info["columns"]},
+            "schema": schema_info,
             "status": "ready",
             "created_at": datetime.utcnow().isoformat()
         }
@@ -190,11 +115,22 @@ async def upload_dataset(
             "file_type": file_type,
             "row_count": schema_info["row_count"],
             "column_count": schema_info["column_count"],
-            "schema": schema_info["columns"],
+            "schema": schema_info,
             "status": "ready",
             "created_at": dataset_data["created_at"]
         }
         
+    except SchemaDetectionError as e:
+        try:
+            storage_service.delete_file(settings.datasets_bucket, storage_path)
+        except Exception:
+            pass
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to detect schema: {str(e)}"
+        )
+
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
