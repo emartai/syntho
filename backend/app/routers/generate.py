@@ -31,7 +31,7 @@ async def create_generation_job(
 
     dataset_resp = (
         supabase.table("datasets")
-        .select("id,file_path,user_id")
+        .select("id,file_path,file_type,user_id")
         .eq("id", dataset_id)
         .eq("user_id", user_id)
         .single()
@@ -58,12 +58,22 @@ async def create_generation_job(
     modal_payload = {
         "synthetic_dataset_id": synthetic_dataset_id,
         "original_file_path": dataset["file_path"],
+        "original_file_type": dataset.get("file_type"),
         "method": method,
         "config": config,
         "user_id": user_id,
     }
 
-    job_id = trigger_modal_job(modal_payload)
+    try:
+        job_id = trigger_modal_job(modal_payload)
+    except HTTPException as exc:
+        failure_payload = {
+            "status": "failed",
+            "error_message": exc.detail,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        supabase.table("synthetic_datasets").update(failure_payload).eq("id", synthetic_dataset_id).execute()
+        raise
 
     update_payload = {
         "job_id": job_id,

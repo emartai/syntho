@@ -104,6 +104,27 @@ async def run_job(payload: dict, x_api_secret: str = Header(default="")):
     return {"status": "accepted", "job_id": call.object_id}
 
 
+def _load_source_dataframe(file_bytes: bytes, file_path: str, file_type: str | None = None) -> pd.DataFrame:
+    extension = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
+
+    if file_type == "text/csv" or extension == "csv":
+        return pd.read_csv(io.BytesIO(file_bytes))
+
+    if file_type == "application/json" or extension == "json":
+        return pd.read_json(io.BytesIO(file_bytes))
+
+    if file_type == "application/vnd.apache.parquet" or extension == "parquet":
+        return pd.read_parquet(io.BytesIO(file_bytes))
+
+    if file_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" or extension == "xlsx":
+        return pd.read_excel(io.BytesIO(file_bytes))
+
+    try:
+        return pd.read_csv(io.BytesIO(file_bytes))
+    except Exception as exc:
+        raise ValueError(f"Unsupported or unreadable source dataset format for path: {file_path}") from exc
+
+
 @app.function(
     image=ml_image,
     gpu="T4",
@@ -120,7 +141,11 @@ async def generate_synthetic(payload: dict):
         source_bytes = download_from_storage("datasets", payload["original_file_path"])
         update_job_progress(synthetic_dataset_id, 20, "running", "Downloaded source dataset")
 
-        source_df = pd.read_csv(io.BytesIO(source_bytes))
+        source_df = _load_source_dataframe(
+            source_bytes,
+            payload["original_file_path"],
+            payload.get("original_file_type"),
+        )
         generator = _dispatch_generator(payload["method"])
 
         generated = generator(source_df, payload.get("config", {}))
