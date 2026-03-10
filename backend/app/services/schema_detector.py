@@ -23,8 +23,17 @@ class SchemaDetectionError(Exception):
 
 
 def _serialize_value(value: Any) -> Any:
-    if pd.isna(value):
+    if value is None:
         return None
+
+    if isinstance(value, (list, tuple, dict, set)):
+        return value
+
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
 
     if hasattr(value, "item"):
         try:
@@ -70,11 +79,11 @@ def _detect_column_type(series: pd.Series, unique_count: int, row_count: int) ->
     if _is_boolean_column(series):
         return "boolean"
 
-    if _is_datetime_column(series):
-        return "datetime"
-
     if is_numeric_dtype(series) or is_integer_dtype(series) or is_float_dtype(series):
         return "numeric"
+
+    if _is_datetime_column(series):
+        return "datetime"
 
     unique_ratio = (unique_count / row_count) if row_count else 0
     if is_object_dtype(series) and (unique_count < 50 or unique_ratio < 0.05):
