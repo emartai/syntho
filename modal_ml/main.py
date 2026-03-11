@@ -7,7 +7,7 @@ from fastapi import Header, HTTPException
 
 from modal_ml.compliance_reporter import compliance_reporter
 from modal_ml.correlation_validator import correlation_validator
-from modal_ml.ctgan_generator import ctgan_generator
+from modal_ml.ctgan_generator import CancelledError, generate_ctgan
 from modal_ml.privacy_scorer import privacy_scorer
 from modal_ml.quality_reporter import quality_reporter
 from modal_ml.sdv_generator import generate_gaussian_copula
@@ -48,7 +48,7 @@ ml_image = (
 
 def _dispatch_generator(method: str):
     if method == "ctgan":
-        return ctgan_generator
+        return generate_ctgan
     if method == "gaussian_copula":
         return generate_gaussian_copula
     raise ValueError(f"Unsupported generation method: {method}")
@@ -109,6 +109,17 @@ async def run_job(payload: dict, x_api_secret: str = Header(default="")):
 async def generate_synthetic(payload: dict):
     synthetic_dataset_id = payload["synthetic_dataset_id"]
 
+    def is_job_cancelled(dataset_id: str) -> bool:
+        response = (
+            supabase_client()
+            .table("synthetic_datasets")
+            .select("status")
+            .eq("id", dataset_id)
+            .single()
+            .execute()
+        )
+        return (response.data or {}).get("status") == "failed"
+
     try:
         update_job_progress(synthetic_dataset_id, 5, "running", "Job started")
         log_job_event(synthetic_dataset_id, "started", "Synthetic generation started")
@@ -126,7 +137,10 @@ async def generate_synthetic(payload: dict):
         if payload["method"] == "gaussian_copula":
             synthetic_df = generator(source_df, payload.get("config", {}), synthetic_dataset_id)
         else:
-            generated = generator(source_df, payload.get("config", {}))
+            ctgan_config = dict(payload.get("config", {}))
+            ctgan_config["_cancel_check"] = is_job_cancelled
+            update_job_progress(synthetic_dataset_id, 5, "running", "CTGAN uses T4 GPU acceleration")
+            generated = generator(source_df, ctgan_config, synthetic_dataset_id)
             synthetic_df = generated if isinstance(generated, pd.DataFrame) else pd.DataFrame(generated)
 
         output_path = f"{payload['user_id']}/{synthetic_dataset_id}/data.csv"
@@ -142,6 +156,7 @@ async def generate_synthetic(payload: dict):
             }
         ).eq("id", synthetic_dataset_id).execute()
 
+        update_job_progress(synthetic_dataset_id, 92, "running", "Scoring privacy")
         privacy_scorer(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         correlation_validator(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
@@ -149,6 +164,11 @@ async def generate_synthetic(payload: dict):
 
         update_job_progress(synthetic_dataset_id, 100, "completed", "Synthetic generation completed")
         log_job_event(synthetic_dataset_id, "completed", "Synthetic dataset generation completed")
+
+    except CancelledError as exc:
+        update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))
+        log_job_event(synthetic_dataset_id, "cancelled", str(exc))
+        return
 
     except Exception as exc:
         update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))

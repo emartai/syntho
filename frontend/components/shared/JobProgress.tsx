@@ -1,6 +1,11 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+
+import { api } from '@/lib/api';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 
 type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
@@ -37,58 +42,82 @@ const statusConfig: Record<JobStatus, { label: string; color: string; bgColor: s
   },
 };
 
+function toStepLabel(progress: number, status: JobStatus) {
+  if (status === 'completed') return 'Complete';
+  if (progress < 10) return 'Initializing';
+  if (progress < 80) return 'Training model';
+  if (progress < 92) return 'Generating data';
+  return 'Scoring privacy';
+}
+
+function formatElapsed(seconds: number) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
 export function JobProgress({ jobId, status, progress }: JobProgressProps) {
   const config = statusConfig[status];
+  const [startTime] = useState(() => Date.now());
+  const [elapsed, setElapsed] = useState(0);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  useEffect(() => {
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [startTime]);
+
+  const stepLabel = useMemo(() => toStepLabel(progress, status), [progress, status]);
+
+  const handleCancel = async () => {
+    if (!jobId) return;
+    setIsCancelling(true);
+    try {
+      await api.synthetic.cancel(jobId);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   return (
-    <div className="space-y-3">
-      {/* Status badge */}
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span 
-          style={{ 
-            background: config.bgColor, 
-            color: config.color, 
-            border: `1px solid ${config.borderColor}`, 
-            padding: '3px 10px', 
-            borderRadius: 20, 
-            fontSize: 11, 
-            fontWeight: 600, 
-            fontFamily: 'Satoshi, sans-serif', 
-            display: 'inline-block' 
+        <span
+          style={{
+            background: config.bgColor,
+            color: config.color,
+            border: `1px solid ${config.borderColor}`,
+            padding: '3px 10px',
+            borderRadius: 20,
+            fontSize: 11,
+            fontWeight: 600,
+            fontFamily: 'Satoshi, sans-serif',
+            display: 'inline-block',
           }}
         >
           {config.label}
         </span>
-        {jobId && (
-          <span className="text-xs text-[rgba(241,240,255,0.38)] font-mono">
-            {jobId.slice(0, 8)}
-          </span>
-        )}
+        <span className="text-xs text-[rgba(241,240,255,0.65)]">Elapsed: {formatElapsed(elapsed)}</span>
       </div>
 
-      {/* Progress bar */}
       <div className="space-y-1">
         <Progress value={progress} className="h-2" />
         <div className="flex justify-between text-xs text-[rgba(241,240,255,0.38)]">
-          <span>Progress</span>
+          <span>{stepLabel}</span>
           <span>{progress}%</span>
         </div>
       </div>
 
-      {/* Pulse indicator for running jobs */}
-      {status === 'running' && (
-        <div className="flex items-center gap-2">
-          <div 
-            className="w-2 h-2 rounded-full bg-[#06b6d4]"
-            style={{ 
-              animation: 'pulseGlow 1.8s ease-in-out infinite',
-              boxShadow: '0 0 10px rgba(6,182,212,0.5)'
-            }}
-          />
-          <span className="text-xs text-[rgba(241,240,255,0.65)]">
-            Processing...
-          </span>
-        </div>
+      {status === 'running' && jobId && (
+        <Button variant="outline" onClick={handleCancel} disabled={isCancelling}>
+          {isCancelling ? 'Cancelling...' : 'Cancel'}
+        </Button>
+      )}
+
+      {status === 'completed' && jobId && (
+        <Button asChild>
+          <Link href={`/datasets/${jobId}`}>View Results</Link>
+        </Button>
       )}
     </div>
   );

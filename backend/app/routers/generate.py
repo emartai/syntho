@@ -83,3 +83,34 @@ async def create_generation_job(
 
     result = {**synthetic_payload, **update_payload}
     return result
+
+
+@router.patch("/{synthetic_dataset_id}/cancel", response_model=dict)
+async def cancel_generation_job(
+    synthetic_dataset_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    supabase = get_supabase()
+
+    current = (
+        supabase.table("synthetic_datasets")
+        .select("id,status")
+        .eq("id", synthetic_dataset_id)
+        .eq("user_id", user_id)
+        .single()
+        .execute()
+    )
+
+    if not current.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation job not found")
+
+    if current.data.get("status") in {"completed", "failed"}:
+        return current.data
+
+    cancelled = {
+        "status": "failed",
+        "error_message": "Generation cancelled by user",
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    supabase.table("synthetic_datasets").update(cancelled).eq("id", synthetic_dataset_id).execute()
+    return {"id": synthetic_dataset_id, **cancelled}
