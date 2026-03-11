@@ -1,15 +1,20 @@
-import importlib
 import io
 import os
-from typing import Any, Callable
 
 import modal
 import pandas as pd
 from fastapi import Header, HTTPException
 
+from modal_ml.compliance_reporter import compliance_reporter
+from modal_ml.correlation_validator import correlation_validator
+from modal_ml.ctgan_generator import ctgan_generator
+from modal_ml.privacy_scorer import privacy_scorer
+from modal_ml.quality_reporter import quality_reporter
+from modal_ml.sdv_generator import generate_gaussian_copula
 from modal_ml.utils import (
     download_from_storage,
     log_job_event,
+    supabase_client,
     update_job_progress,
     upload_to_storage,
 )
@@ -41,67 +46,12 @@ ml_image = (
 )
 
 
-def _load_callable(module_name: str, fallback_name: str) -> Callable[..., Any] | None:
-    try:
-        module = importlib.import_module(module_name)
-    except Exception:
-        return None
-
-    for candidate in (fallback_name, "run", "generate", module_name.split(".")[-1]):
-        fn = getattr(module, candidate, None)
-        if callable(fn):
-            return fn
-
-    return None
-
-
-def _dispatch_generator(method: str) -> Callable[..., Any]:
+def _dispatch_generator(method: str):
     if method == "ctgan":
-        func = _load_callable("modal_ml.ctgan_generator", "ctgan_generator")
-    elif method == "gaussian_copula":
-        func = _load_callable("modal_ml.sdv_generator", "sdv_generator")
-    else:
-        raise ValueError(f"Unsupported generation method: {method}")
-
-    if not func:
-        raise RuntimeError(f"Generator implementation not found for method: {method}")
-    return func
-
-
-def _run_analysis_step(module_name: str, dataframe: pd.DataFrame, context: dict[str, Any]) -> None:
-    func = _load_callable(module_name, module_name.split(".")[-1])
-    if not func:
-        return
-
-    try:
-        func(dataframe, context)
-    except TypeError:
-        func(dataframe)
-
-
-@app.function(
-    image=ml_image,
-    gpu="T4",
-    timeout=3600,
-    secrets=[modal.Secret.from_name("syntho-secrets")],
-)
-@modal.web_endpoint(method="POST")
-async def run_job(payload: dict, x_api_secret: str = Header(default="")):
-    expected_secret = os.environ.get("MODAL_API_SECRET")
-    if not expected_secret:
-        raise HTTPException(status_code=500, detail="Server secret not configured")
-
-    provided_secret = x_api_secret or payload.get("api_secret")
-    if provided_secret != expected_secret:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    required_fields = {"synthetic_dataset_id", "original_file_path", "method", "config", "user_id"}
-    missing = [field for field in required_fields if field not in payload]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
-
-    call = generate_synthetic.spawn(payload)
-    return {"status": "accepted", "job_id": call.object_id}
+        return ctgan_generator
+    if method == "gaussian_copula":
+        return generate_gaussian_copula
+    raise ValueError(f"Unsupported generation method: {method}")
 
 
 def _load_source_dataframe(file_bytes: bytes, file_path: str, file_type: str | None = None) -> pd.DataFrame:
@@ -131,6 +81,31 @@ def _load_source_dataframe(file_bytes: bytes, file_path: str, file_type: str | N
     timeout=3600,
     secrets=[modal.Secret.from_name("syntho-secrets")],
 )
+@modal.web_endpoint(method="POST")
+async def run_job(payload: dict, x_api_secret: str = Header(default="")):
+    expected_secret = os.environ.get("MODAL_API_SECRET")
+    if not expected_secret:
+        raise HTTPException(status_code=500, detail="Server secret not configured")
+
+    provided_secret = x_api_secret or payload.get("api_secret")
+    if provided_secret != expected_secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    required_fields = {"synthetic_dataset_id", "original_file_path", "method", "config", "user_id"}
+    missing = [field for field in required_fields if field not in payload]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
+
+    call = generate_synthetic.spawn(payload)
+    return {"status": "accepted", "job_id": call.object_id}
+
+
+@app.function(
+    image=ml_image,
+    gpu="T4",
+    timeout=3600,
+    secrets=[modal.Secret.from_name("syntho-secrets")],
+)
 async def generate_synthetic(payload: dict):
     synthetic_dataset_id = payload["synthetic_dataset_id"]
 
@@ -146,21 +121,31 @@ async def generate_synthetic(payload: dict):
             payload["original_file_path"],
             payload.get("original_file_type"),
         )
+
         generator = _dispatch_generator(payload["method"])
+        if payload["method"] == "gaussian_copula":
+            synthetic_df = generator(source_df, payload.get("config", {}), synthetic_dataset_id)
+        else:
+            generated = generator(source_df, payload.get("config", {}))
+            synthetic_df = generated if isinstance(generated, pd.DataFrame) else pd.DataFrame(generated)
 
-        generated = generator(source_df, payload.get("config", {}))
-        synthetic_df = generated if isinstance(generated, pd.DataFrame) else pd.DataFrame(generated)
-        update_job_progress(synthetic_dataset_id, 60, "running", "Synthetic dataset generated")
-
-        analysis_context = {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id}
-        _run_analysis_step("modal_ml.privacy_scorer", synthetic_df, analysis_context)
-        _run_analysis_step("modal_ml.correlation_validator", synthetic_df, analysis_context)
-        _run_analysis_step("modal_ml.quality_reporter", synthetic_df, analysis_context)
-        _run_analysis_step("modal_ml.compliance_reporter", synthetic_df, analysis_context)
-
-        output_path = f"{payload['user_id']}/{synthetic_dataset_id}/synthetic.csv"
+        output_path = f"{payload['user_id']}/{synthetic_dataset_id}/data.csv"
         output_bytes = synthetic_df.to_csv(index=False).encode("utf-8")
         upload_to_storage("synthetic", output_path, output_bytes, "text/csv")
+
+        supabase = supabase_client()
+        supabase.table("synthetic_datasets").update(
+            {
+                "status": "running",
+                "file_path": output_path,
+                "row_count": len(synthetic_df),
+            }
+        ).eq("id", synthetic_dataset_id).execute()
+
+        privacy_scorer(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        correlation_validator(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        compliance_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
 
         update_job_progress(synthetic_dataset_id, 100, "completed", "Synthetic generation completed")
         log_job_event(synthetic_dataset_id, "completed", "Synthetic dataset generation completed")
