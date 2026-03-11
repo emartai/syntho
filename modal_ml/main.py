@@ -170,7 +170,7 @@ async def generate_synthetic(payload: dict):
         privacy_scorer(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         correlation_validator(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
-        compliance_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        compliance_reporter(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
 
         update_job_progress(synthetic_dataset_id, 100, "completed", "Synthetic generation completed")
         log_job_event(synthetic_dataset_id, "completed", "Synthetic dataset generation completed")

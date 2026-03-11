@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 
+import { ComplianceReport } from '@/components/reports/ComplianceReport';
 import { PrivacyScore } from '@/components/reports/PrivacyScore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -88,14 +89,7 @@ export default async function DatasetDetailPage({ params }: DatasetDetailPagePro
         </TabsContent>
 
         <TabsContent value="compliance">
-          <Card>
-            <CardHeader>
-              <CardTitle>Compliance Report</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-text-2">Compliance report will be displayed here.</p>
-            </CardContent>
-          </Card>
+          <ComplianceReport syntheticDatasetId={params.id} />
         </TabsContent>
 
         <TabsContent value="download">

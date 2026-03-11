@@ -93,6 +93,13 @@ export const api = {
     delete: (id: string) => apiClient.delete(`/api/v1/api-keys/${id}`),
   },
   
+
+  // Reports
+  reports: {
+    getCompliance: (syntheticDatasetId: string) =>
+      apiClient.get(`/api/v1/reports/compliance/${syntheticDatasetId}`),
+  },
+
   // Purchases
   purchases: {
     verify: (txRef: string) => apiClient.post('/api/v1/purchases/verify', { tx_ref: txRef }),
