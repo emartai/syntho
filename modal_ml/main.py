@@ -120,12 +120,20 @@ async def generate_synthetic(payload: dict):
         )
         return (response.data or {}).get("status") == "failed"
 
+    def raise_if_cancelled() -> None:
+        if is_job_cancelled(synthetic_dataset_id):
+            raise CancelledError("Generation cancelled by user")
+
+    def update_running_progress(progress: int, message: str) -> None:
+        raise_if_cancelled()
+        update_job_progress(synthetic_dataset_id, progress, "running", message)
+
     try:
-        update_job_progress(synthetic_dataset_id, 5, "running", "Job started")
+        update_running_progress(5, "Job started")
         log_job_event(synthetic_dataset_id, "started", "Synthetic generation started")
 
         source_bytes = download_from_storage("datasets", payload["original_file_path"])
-        update_job_progress(synthetic_dataset_id, 20, "running", "Downloaded source dataset")
+        update_running_progress(20, "Downloaded source dataset")
 
         source_df = _load_source_dataframe(
             source_bytes,
@@ -134,19 +142,21 @@ async def generate_synthetic(payload: dict):
         )
 
         generator = _dispatch_generator(payload["method"])
+        generator_config = dict(payload.get("config", {}))
+        generator_config["_cancel_check"] = is_job_cancelled
+
         if payload["method"] == "gaussian_copula":
-            synthetic_df = generator(source_df, payload.get("config", {}), synthetic_dataset_id)
+            synthetic_df = generator(source_df, generator_config, synthetic_dataset_id)
         else:
-            ctgan_config = dict(payload.get("config", {}))
-            ctgan_config["_cancel_check"] = is_job_cancelled
-            update_job_progress(synthetic_dataset_id, 5, "running", "CTGAN uses T4 GPU acceleration")
-            generated = generator(source_df, ctgan_config, synthetic_dataset_id)
+            generated = generator(source_df, generator_config, synthetic_dataset_id)
             synthetic_df = generated if isinstance(generated, pd.DataFrame) else pd.DataFrame(generated)
 
+        raise_if_cancelled()
         output_path = f"{payload['user_id']}/{synthetic_dataset_id}/data.csv"
         output_bytes = synthetic_df.to_csv(index=False).encode("utf-8")
         upload_to_storage("synthetic", output_path, output_bytes, "text/csv")
 
+        raise_if_cancelled()
         supabase = supabase_client()
         supabase.table("synthetic_datasets").update(
             {
@@ -156,7 +166,7 @@ async def generate_synthetic(payload: dict):
             }
         ).eq("id", synthetic_dataset_id).execute()
 
-        update_job_progress(synthetic_dataset_id, 92, "running", "Scoring privacy")
+        update_running_progress(92, "Scoring privacy")
         privacy_scorer(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         correlation_validator(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})

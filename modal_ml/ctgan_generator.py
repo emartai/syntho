@@ -92,11 +92,16 @@ def generate_ctgan(df: pd.DataFrame, config: dict[str, Any], synthetic_dataset_i
         verbose=True,
     )
 
-    update_job_progress(synthetic_dataset_id, 5, "running", "Initializing CTGAN")
-
     cancel_check = config.get("_cancel_check")
     if not callable(cancel_check):
         cancel_check = _is_job_cancelled
+
+    def raise_if_cancelled() -> None:
+        if cancel_check(synthetic_dataset_id):
+            raise CancelledError("Generation cancelled by user")
+
+    raise_if_cancelled()
+    update_job_progress(synthetic_dataset_id, 5, "running", "Initializing CTGAN")
 
     def on_epoch(current_epoch: int, total_epochs: int) -> None:
         progress = int(5 + (current_epoch / total_epochs) * 70)
@@ -105,8 +110,10 @@ def generate_ctgan(df: pd.DataFrame, config: dict[str, Any], synthetic_dataset_i
     with _patch_ctgan_progress(epochs, synthetic_dataset_id, on_epoch, cancel_check):
         synthesizer.fit(data=df, discrete_columns=discrete_columns)
 
+    raise_if_cancelled()
     update_job_progress(synthetic_dataset_id, 80, "running", "Generating data")
     synthetic_data = synthesizer.sample(num_rows=num_rows)
+    raise_if_cancelled()
     update_job_progress(synthetic_dataset_id, 90, "running", "Data generation completed")
 
     return synthetic_data
