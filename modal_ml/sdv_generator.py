@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
+from modal_ml.ctgan_generator import CancelledError
 from modal_ml.utils import update_job_progress
 
 
@@ -80,6 +81,14 @@ def generate_gaussian_copula(
     if df.empty:
         raise ValueError("Source dataframe is empty")
 
+    cancel_check = config.get("_cancel_check")
+
+    def raise_if_cancelled() -> None:
+        if callable(cancel_check) and cancel_check(synthetic_dataset_id):
+            raise CancelledError("Generation cancelled by user")
+
+    raise_if_cancelled()
+
     metadata = _build_metadata(df)
     num_rows = int(config.get("num_rows", len(df)))
 
@@ -88,12 +97,15 @@ def generate_gaussian_copula(
         enforce_min_max_values=True,
         enforce_rounding=True,
     )
+    raise_if_cancelled()
     update_job_progress(synthetic_dataset_id, 10, "running", "Initialized Gaussian Copula synthesizer")
 
     synthesizer.fit(df)
+    raise_if_cancelled()
     update_job_progress(synthetic_dataset_id, 60, "running", "Gaussian Copula training completed")
 
     synthetic_df = synthesizer.sample(num_rows=num_rows)
+    raise_if_cancelled()
     update_job_progress(synthetic_dataset_id, 80, "running", "Synthetic rows sampled")
 
     preserve_dtypes = bool(config.get("preserve_dtypes", True))

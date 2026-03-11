@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { Info, Loader2 } from 'lucide-react';
 
 import { JobProgress } from '@/components/shared/JobProgress';
 import { Button } from '@/components/ui/button';
@@ -19,12 +19,21 @@ const METHODS = [
   { label: 'GAN-based (CTGAN)', value: 'ctgan' },
 ] as const;
 
+function estimateCtganMinutes(rows: number, epochs: number) {
+  const base = 5;
+  const rowFactor = Math.max(0, rows - 10_000) / 10_000;
+  const epochFactor = (epochs - 100) / 100;
+  return Math.min(15, Math.max(5, Math.round(base + rowFactor * 1.2 + epochFactor * 2.2)));
+}
+
 export default function GenerateConfigPage() {
   const params = useParams<{ id: string }>();
   const datasetId = params.id;
 
   const [method, setMethod] = useState<'gaussian_copula' | 'ctgan'>('gaussian_copula');
   const [numRows, setNumRows] = useState<number | ''>('');
+  const [epochs, setEpochs] = useState(300);
+  const [batchSize, setBatchSize] = useState(500);
   const [syntheticDatasetId, setSyntheticDatasetId] = useState<string | undefined>();
 
   const progressState = useJobProgress(syntheticDatasetId);
@@ -38,6 +47,7 @@ export default function GenerateConfigPage() {
   });
 
   const inferredRows = useMemo(() => datasetQuery.data?.row_count ?? 0, [datasetQuery.data]);
+  const estimatedMinutes = useMemo(() => estimateCtganMinutes(Number(numRows || inferredRows), epochs), [numRows, inferredRows, epochs]);
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -46,6 +56,7 @@ export default function GenerateConfigPage() {
         method,
         config: {
           num_rows: Number(numRows || inferredRows),
+          ...(method === 'ctgan' ? { epochs, batch_size: batchSize } : {}),
         },
       };
       const response = await api.synthetic.generate(payload);
@@ -75,9 +86,7 @@ export default function GenerateConfigPage() {
   if (datasetQuery.isError || !datasetQuery.data) {
     return (
       <Card>
-        <CardContent className="pt-6 text-sm text-red-400">
-          Failed to load dataset information.
-        </CardContent>
+        <CardContent className="pt-6 text-sm text-red-400">Failed to load dataset information.</CardContent>
       </Card>
     );
   }
@@ -146,6 +155,42 @@ export default function GenerateConfigPage() {
             />
           </div>
 
+          {method === 'ctgan' && (
+            <div className="space-y-4 rounded-lg border border-border p-4">
+              <div className="flex items-start gap-2 rounded-md border border-[rgba(6,182,212,0.25)] bg-[rgba(6,182,212,0.10)] p-3 text-sm text-text">
+                <Info className="h-4 w-4 mt-0.5 text-cyan-400" />
+                <span>CTGAN uses GPU acceleration — typical job takes 5–15 minutes.</span>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="epochs">Epochs: {epochs}</Label>
+                <Input
+                  id="epochs"
+                  type="range"
+                  min={100}
+                  max={500}
+                  step={10}
+                  value={epochs}
+                  onChange={(e) => setEpochs(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="batchSize">Batch size</Label>
+                <Input
+                  id="batchSize"
+                  type="number"
+                  min={50}
+                  step={50}
+                  value={batchSize}
+                  onChange={(e) => setBatchSize(Math.max(1, Number(e.target.value || 500)))}
+                />
+              </div>
+
+              <p className="text-xs text-text-2">Estimated CTGAN runtime: ~{estimatedMinutes} minutes.</p>
+            </div>
+          )}
+
           <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
             {generateMutation.isPending ? (
               <>
@@ -165,11 +210,7 @@ export default function GenerateConfigPage() {
             <CardTitle>Job Progress</CardTitle>
           </CardHeader>
           <CardContent>
-            <JobProgress
-              jobId={syntheticDatasetId}
-              status={progressState.status}
-              progress={progressState.progress}
-            />
+            <JobProgress jobId={syntheticDatasetId} status={progressState.status} progress={progressState.progress} />
             {progressState.error && <p className="text-xs text-red-400 mt-2">{progressState.error}</p>}
           </CardContent>
         </Card>

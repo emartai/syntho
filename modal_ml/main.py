@@ -7,7 +7,7 @@ from fastapi import Header, HTTPException
 
 from modal_ml.compliance_reporter import compliance_reporter
 from modal_ml.correlation_validator import correlation_validator
-from modal_ml.ctgan_generator import ctgan_generator
+from modal_ml.ctgan_generator import CancelledError, generate_ctgan
 from modal_ml.privacy_scorer import privacy_scorer
 from modal_ml.quality_reporter import quality_reporter
 from modal_ml.sdv_generator import generate_gaussian_copula
@@ -48,7 +48,7 @@ ml_image = (
 
 def _dispatch_generator(method: str):
     if method == "ctgan":
-        return ctgan_generator
+        return generate_ctgan
     if method == "gaussian_copula":
         return generate_gaussian_copula
     raise ValueError(f"Unsupported generation method: {method}")
@@ -109,12 +109,31 @@ async def run_job(payload: dict, x_api_secret: str = Header(default="")):
 async def generate_synthetic(payload: dict):
     synthetic_dataset_id = payload["synthetic_dataset_id"]
 
+    def is_job_cancelled(dataset_id: str) -> bool:
+        response = (
+            supabase_client()
+            .table("synthetic_datasets")
+            .select("status")
+            .eq("id", dataset_id)
+            .single()
+            .execute()
+        )
+        return (response.data or {}).get("status") == "failed"
+
+    def raise_if_cancelled() -> None:
+        if is_job_cancelled(synthetic_dataset_id):
+            raise CancelledError("Generation cancelled by user")
+
+    def update_running_progress(progress: int, message: str) -> None:
+        raise_if_cancelled()
+        update_job_progress(synthetic_dataset_id, progress, "running", message)
+
     try:
-        update_job_progress(synthetic_dataset_id, 5, "running", "Job started")
+        update_running_progress(5, "Job started")
         log_job_event(synthetic_dataset_id, "started", "Synthetic generation started")
 
         source_bytes = download_from_storage("datasets", payload["original_file_path"])
-        update_job_progress(synthetic_dataset_id, 20, "running", "Downloaded source dataset")
+        update_running_progress(20, "Downloaded source dataset")
 
         source_df = _load_source_dataframe(
             source_bytes,
@@ -123,16 +142,21 @@ async def generate_synthetic(payload: dict):
         )
 
         generator = _dispatch_generator(payload["method"])
+        generator_config = dict(payload.get("config", {}))
+        generator_config["_cancel_check"] = is_job_cancelled
+
         if payload["method"] == "gaussian_copula":
-            synthetic_df = generator(source_df, payload.get("config", {}), synthetic_dataset_id)
+            synthetic_df = generator(source_df, generator_config, synthetic_dataset_id)
         else:
-            generated = generator(source_df, payload.get("config", {}))
+            generated = generator(source_df, generator_config, synthetic_dataset_id)
             synthetic_df = generated if isinstance(generated, pd.DataFrame) else pd.DataFrame(generated)
 
+        raise_if_cancelled()
         output_path = f"{payload['user_id']}/{synthetic_dataset_id}/data.csv"
         output_bytes = synthetic_df.to_csv(index=False).encode("utf-8")
         upload_to_storage("synthetic", output_path, output_bytes, "text/csv")
 
+        raise_if_cancelled()
         supabase = supabase_client()
         supabase.table("synthetic_datasets").update(
             {
@@ -142,6 +166,7 @@ async def generate_synthetic(payload: dict):
             }
         ).eq("id", synthetic_dataset_id).execute()
 
+        update_running_progress(92, "Scoring privacy")
         privacy_scorer(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         correlation_validator(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
@@ -149,6 +174,11 @@ async def generate_synthetic(payload: dict):
 
         update_job_progress(synthetic_dataset_id, 100, "completed", "Synthetic generation completed")
         log_job_event(synthetic_dataset_id, "completed", "Synthetic dataset generation completed")
+
+    except CancelledError as exc:
+        update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))
+        log_job_event(synthetic_dataset_id, "cancelled", str(exc))
+        return
 
     except Exception as exc:
         update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))

@@ -74,6 +74,7 @@ export const api = {
   // Synthetic datasets
   synthetic: {
     generate: (data: any) => apiClient.post('/api/v1/generate', data),
+    cancel: (id: string) => apiClient.patch(`/api/v1/generate/${id}/cancel`),
     get: (id: string) => apiClient.get(`/api/v1/synthetic/${id}`),
     list: () => apiClient.get('/api/v1/synthetic'),
   },
