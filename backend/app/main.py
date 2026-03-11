@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 from app.config import settings
 from app.models.schemas import HealthResponse
-from app.routers import datasets, generate
+from app.routers import datasets, generate, reports
 
 
 # Create FastAPI app
@@ -70,6 +70,7 @@ async def root():
 # Include routers
 app.include_router(datasets.router)
 app.include_router(generate.router)
+app.include_router(reports.router)
 
 
 # Startup event

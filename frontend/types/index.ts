@@ -45,8 +45,15 @@ export interface ComplianceReport {
   report_type: 'gdpr' | 'hipaa' | 'combined';
   file_path?: string;
   passed: boolean;
+  gdpr_passed?: boolean;
+  hipaa_passed?: boolean;
   findings: Record<string, any>;
   created_at: string;
+}
+
+export interface ComplianceReportResponse {
+  report: ComplianceReport;
+  signed_url: string | null;
 }
 
 export interface QualityReport {
