@@ -2,10 +2,11 @@ import { notFound } from 'next/navigation';
 
 import { ComplianceReport } from '@/components/reports/ComplianceReport';
 import { PrivacyScore } from '@/components/reports/PrivacyScore';
+import { QualityComparisonReport } from '@/components/reports/QualityComparisonReport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { createClient } from '@/lib/supabase/server';
-import type { PrivacyScore as PrivacyScoreType } from '@/types';
+import type { PrivacyScore as PrivacyScoreType, QualityReport as QualityReportType } from '@/types';
 
 interface DatasetDetailPageProps {
   params: {
@@ -18,7 +19,7 @@ export default async function DatasetDetailPage({ params }: DatasetDetailPagePro
 
   const { data: syntheticDataset } = await supabase
     .from('synthetic_datasets')
-    .select('id, status, created_at, original_dataset_id, datasets(name)')
+    .select('id, status, created_at, original_dataset_id, row_count, datasets(name,row_count,column_count)')
     .eq('id', params.id)
     .maybeSingle();
 
@@ -28,6 +29,15 @@ export default async function DatasetDetailPage({ params }: DatasetDetailPagePro
 
   const { data: privacyScore } = await supabase
     .from('privacy_scores')
+    .select('*')
+    .eq('synthetic_dataset_id', params.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+
+  const { data: qualityReport } = await supabase
+    .from('quality_reports')
     .select('*')
     .eq('synthetic_dataset_id', params.id)
     .order('created_at', { ascending: false })
@@ -78,14 +88,12 @@ export default async function DatasetDetailPage({ params }: DatasetDetailPagePro
         </TabsContent>
 
         <TabsContent value="quality">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quality Report</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-text-2">Quality report will be displayed here.</p>
-            </CardContent>
-          </Card>
+          <QualityComparisonReport
+            report={qualityReport as QualityReportType | null}
+            originalRowCount={(syntheticDataset.datasets as { row_count?: number | null } | null)?.row_count ?? null}
+            syntheticRowCount={syntheticDataset.row_count ?? null}
+            originalColumnCount={(syntheticDataset.datasets as { column_count?: number | null } | null)?.column_count ?? null}
+          />
         </TabsContent>
 
         <TabsContent value="compliance">
