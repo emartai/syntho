@@ -168,7 +168,7 @@ async def generate_synthetic(payload: dict):
 
         update_running_progress(92, "Scoring privacy")
         privacy_scorer(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
-        correlation_validator(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        correlation_validator(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
         compliance_reporter(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
 
