@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Info, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { JobProgress } from '@/components/shared/JobProgress';
 import { Button } from '@/components/ui/button';
@@ -11,8 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api';
-import { useJobProgress } from '@/hooks/useJobProgress';
-import { toast } from 'sonner';
 
 const METHODS = [
   { label: 'Statistical Mimicry (SDV)', value: 'gaussian_copula' },
@@ -28,6 +27,7 @@ function estimateCtganMinutes(rows: number, epochs: number) {
 
 export default function GenerateConfigPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const datasetId = params.id;
 
   const [method, setMethod] = useState<'gaussian_copula' | 'ctgan'>('gaussian_copula');
@@ -35,8 +35,6 @@ export default function GenerateConfigPage() {
   const [epochs, setEpochs] = useState(300);
   const [batchSize, setBatchSize] = useState(500);
   const [syntheticDatasetId, setSyntheticDatasetId] = useState<string | undefined>();
-
-  const progressState = useJobProgress(syntheticDatasetId);
 
   const datasetQuery = useQuery({
     queryKey: ['dataset', datasetId],
@@ -69,11 +67,38 @@ export default function GenerateConfigPage() {
       });
     },
     onError: (error: any) => {
-      toast.error('Failed to start generation', {
-        description: error?.response?.data?.detail || error.message,
-      });
+      const status = error?.response?.status;
+      const detail = error?.response?.data?.detail || error.message;
+
+      if (status === 503 || status === 502) {
+        toast.error('ML service unavailable', {
+          description: 'The ML service is temporarily unavailable. Please try again in a few minutes.',
+        });
+      } else if (detail?.toLowerCase().includes('gpu') || detail?.toLowerCase().includes('quota')) {
+        toast.error('GPU quota exceeded', {
+          description: 'The ML service GPU quota has been reached. Please try again later or contact support.',
+        });
+      } else if (status === 504 || error?.code === 'ECONNABORTED') {
+        toast.error('Request timed out', {
+          description: 'The ML service took too long to respond. Please try again.',
+        });
+      } else {
+        toast.error('Failed to start generation', {
+          description: detail,
+        });
+      }
     },
   });
+
+  const handleComplete = (syntheticId: string) => {
+    toast.success('Your synthetic dataset is ready!', {
+      action: {
+        label: 'View Results',
+        onClick: () => router.push(`/datasets/${syntheticId}`),
+      },
+    });
+    router.push(`/datasets/${syntheticId}`);
+  };
 
   if (datasetQuery.isLoading) {
     return (
@@ -93,6 +118,21 @@ export default function GenerateConfigPage() {
 
   const dataset = datasetQuery.data;
   const schemaColumns = dataset.schema?.columns || [];
+
+  if (syntheticDatasetId) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>Generating Synthetic Dataset</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <JobProgress syntheticDatasetId={syntheticDatasetId} onComplete={handleComplete} />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -203,18 +243,6 @@ export default function GenerateConfigPage() {
           </Button>
         </CardContent>
       </Card>
-
-      {syntheticDatasetId && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Job Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <JobProgress jobId={syntheticDatasetId} status={progressState.status} progress={progressState.progress} />
-            {progressState.error && <p className="text-xs text-red-400 mt-2">{progressState.error}</p>}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

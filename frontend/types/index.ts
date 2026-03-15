@@ -54,6 +54,7 @@ export interface ComplianceReport {
 export interface ComplianceReportResponse {
   report: ComplianceReport;
   signed_url: string | null;
+  ai_explanation?: string;
 }
 
 export interface QualityReport {

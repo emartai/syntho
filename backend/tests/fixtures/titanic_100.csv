@@ -1,0 +1,101 @@
+PassengerId,Survived,Pclass,Name,Sex,Age,Fare,Embarked
+1,0,3,"Braund Mr Owen Harris",male,22,7.25,S
+2,1,1,"Cumings Mrs John Bradley",female,38,71.28,C
+3,1,3,"Heikkinen Miss Laina",female,26,7.92,S
+4,1,1,"Futrelle Mrs Jacques Heath",female,35,53.1,S
+5,0,3,"Allen Mr William Henry",male,35,8.05,S
+6,0,3,"Moran Mr James",male,,8.46,Q
+7,0,1,"McCarthy Mr Timothy J",male,54,51.86,S
+8,0,3,"Palsson Master Gosta Leonard",male,2,21.08,S
+9,1,1,"Johnson Mrs Oscar W",female,27,30,S
+10,1,2,"Nasser Mrs Nicholas",female,14,13,S
+11,0,3,"Sandstrom Miss Marguerite Rut",female,4,16.7,S
+12,1,1,"Bonnell Miss Elizabeth",female,58,26.55,S
+13,0,3,"Saundercock Mr William Henry",male,20,8.05,S
+14,0,3,"Andersson Mr Anders Johan",male,39,7.9,S
+15,0,3,"Vestrom Miss Hulda Amanda",female,14,7.73,S
+16,1,2,"Holverson Mr Alexander Oskar",male,42,13,S
+17,1,3,"Mamee Mr Hanna",male,,7.23,S
+18,0,2,"Crosby Miss Catherine Elizabeth",female,31,26,S
+19,0,3,"Johansson Mr Erik",male,22,7.78,S
+20,1,3,"Olsson Mr Nils Johan",male,29,7.85,S
+21,0,2,"Allen Mr William Henry",male,37,10.5,S
+22,1,2,"Morley Mr Henry",male,39,10.5,S
+23,1,3,"Wick Miss Mary Natalie",female,31,7.75,S
+24,1,1,"Sloper Miss Elizabeth",female,28,35.5,S
+25,0,3,"Smith Mr James",male,27,8.05,S
+26,1,3,"Pavlikova Miss Maria",female,22,7.92,S
+27,0,3,"Meyer Mr August",male,40,13,S
+28,0,1,"McGowan Miss Anna",female,35,15.5,S
+29,1,3,"Ostby Mr Engelhart",male,65,7.13,S
+30,0,3,"Woolner Mr Henry",male,42,13,S
+31,1,2,"Nye Mrs Elizabeth",female,29,10.5,S
+32,1,1,"Guggenheim Mr Benjamin",male,46,79.2,S
+33,0,3,"Bidois Miss Rosie",female,21,7.72,S
+34,1,2,"Jacobsohn Mr Sidney",male,42,13,S
+35,1,1,"Brewe Dr Arthur Jackson",male,45,39.6,S
+36,0,3,"Mangan Miss Mary",female,30,7.75,S
+37,1,3,"Morley Mr Samuel",male,36,13,S
+38,0,3,"Gordon Mr John",male,32,7.75,S
+39,1,2,"Kelly Mrs Florence",female,30,10.5,S
+40,1,3,"Wickes Mrs Mary",female,23,7.75,S
+41,0,3,"Rothschild Mr Martin",male,54,13,S
+42,1,2,"Homer Mr Harry",male,35,10.5,S
+43,0,2,"Laleff Mr Kristo",male,,13,S
+44,1,2,"Chaffee Mrs Carrie",female,47,28.5,S
+45,1,1,"del Carlo Mr Sebastiano",male,62,27.72,S
+46,0,3,"Arbouvel Mr Jean",male,40,7.75,S
+47,1,3,"Balkic Mr Cerin",male,26,7.9,S
+48,1,1,"Holverson Mrs Mary",female,35,26.28,S
+49,1,3,"Tornquist Mr William",male,25,7.92,S
+50,0,2,"White Mr Percival",male,42,13,S
+51,1,3,"Mellinger Miss Madeleine",female,13,19.25,S
+52,0,3,"Kantor Mr Oskar",male,35,13,S
+53,1,3,"Petranec Miss Matilda",female,28,7.9,S
+54,1,2,"Johansson Mr Nils",male,29,13,S
+55,0,3,"Olsson Miss Elina",female,22,7.9,S
+56,1,1,"Jonsson Mr Carl",male,32,27.9,S
+57,0,2,"Hirschbaum Mr Benjamin",male,45,13,S
+58,1,2,"Khalil Mr Saad",male,22,10.5,S
+59,1,2,"Baclini Miss Helena",female,5,10.5,S
+60,1,1,"Samaan Mr Elias",male,40,13,S
+61,0,3,"Nysten Miss Anna",female,22,7.92,S
+62,1,1,"Sage Mr George",male,42,57.75,S
+63,0,3,"Dantcheff Mr Todor",male,25,7.9,S
+64,0,3,"Pinsky Mrs Anna",female,32,13,S
+65,0,2,"Carbines Mr William",male,42,13,S
+66,1,3,"Andersen Mr Aaliour",male,32,7.93,S
+67,1,2,"Hedman Mr Oskar",male,28,10.5,S
+68,0,3,"Jansson Mr Carl",male,21,7.92,S
+69,1,3,"B罐头 Mr Ali",male,32,7.92,S
+70,0,3,"Cox Mr William",male,35,8.05,S
+71,1,2,"Artagaveytia Mr Ramon",male,71,10.5,S
+72,0,3,"Evans Miss Edith",female,22,7.9,S
+73,0,2,"Connolly Miss Kate",female,30,10.5,S
+74,0,3,"Barber Mr John",male,35,8.05,S
+75,1,3,"Daly Mr Eugene",male,32,7.93,S
+76,0,3,"McDermott Mr John",male,35,7.92,S
+77,1,3,"Merouvi Mr Joseph",male,32,7.92,S
+78,0,3,"Moran Mr Daniel",male,32,7.92,S
+79,1,3,"Drew Mr James",male,42,13,S
+80,1,3,"Brade Mr Edward",male,32,7.92,S
+81,0,3,"Hocking Mr Robert",male,35,10.5,S
+82,1,3,"Duran Miss Caterina",female,30,7.92,S
+83,1,1,"Nasser Mr David",male,32,13,S
+84,0,3,"Kantor Mr Oskar",male,35,13,S
+85,1,2,"Graham Mrs Margaret",female,38,26.28,S
+86,0,3,"Pavlikova Miss Maria",female,22,7.92,S
+87,1,3,"Larsson Mr Bengt",male,32,7.92,S
+88,0,3,"Leinonen Mr Antti",male,32,7.92,S
+89,1,1,"Collyer Mr Harvey",male,42,13,S
+90,1,3,"Pengelly Mr Frederick",male,22,7.92,S
+91,0,3,"Doharr Mr Tannous",male,32,7.92,S
+92,1,3,"Jonsson Mr Carl",male,32,7.92,S
+93,0,3,"Hansen Mr Henry",male,42,13,S
+94,0,3,"Gordon Mr John",male,32,7.92,S
+95,1,3,"Lobb Mr William",male,32,7.92,S
+96,0,3,"Rosblom Mrs Salli",female,32,13,S
+97,0,3,"Hakkarainen Mr Pekka",male,32,7.92,S
+98,1,3,"Moss Mr Albert",male,32,7.92,S
+99,0,3,"Johansson Mr Erik",male,22,7.78,S
+100,1,3,"Olsson Mr Nils Johan",male,29,7.85,S

@@ -122,6 +122,7 @@ FLUTTERWAVE_WEBHOOK_HASH  = your-webhook-hash
 MODAL_API_URL             = https://username--syntho-ml-run-job.modal.run
 MODAL_API_SECRET          = 64-char-random-string
 REDIS_URL                 = redis://red-xxx:6379  (Render internal URL)
+GROQ_API_KEY              = your-groq-api-key
 ENVIRONMENT               = production
 ```
 

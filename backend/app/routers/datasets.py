@@ -15,20 +15,22 @@ router = APIRouter(prefix="/api/v1/datasets", tags=["datasets"])
 
 
 def detect_file_type(file_bytes: bytes, filename: str) -> str:
-    """Detect file MIME type using magic bytes."""
+    """Detect file MIME type using magic bytes, with extension fallback for common types."""
+    # First check extension for known types (magic sometimes misdetects CSV as text/plain)
+    if filename.endswith('.csv'):
+        return 'text/csv'
+    elif filename.endswith('.json'):
+        return 'application/json'
+    elif filename.endswith('.parquet'):
+        return 'application/vnd.apache.parquet'
+    elif filename.endswith('.xlsx'):
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    
+    # Then use magic bytes for other types
     try:
         mime = magic.from_buffer(file_bytes[:2048], mime=True)
         return mime
     except:
-        # Fallback to extension-based detection
-        if filename.endswith('.csv'):
-            return 'text/csv'
-        elif filename.endswith('.json'):
-            return 'application/json'
-        elif filename.endswith('.parquet'):
-            return 'application/vnd.apache.parquet'
-        elif filename.endswith('.xlsx'):
-            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         return 'application/octet-stream'
 
 
@@ -195,17 +197,17 @@ async def get_dataset(
             .select("*") \
             .eq("id", dataset_id) \
             .eq("user_id", user_id) \
-            .single() \
+            .limit(1) \
             .execute()
-        
+
         if not response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Dataset not found"
             )
-        
-        return response.data
-        
+
+        return response.data[0]
+
     except HTTPException:
         raise
     except Exception as e:
@@ -232,16 +234,16 @@ async def delete_dataset(
             .select("*") \
             .eq("id", dataset_id) \
             .eq("user_id", user_id) \
-            .single() \
+            .limit(1) \
             .execute()
-        
+
         if not response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Dataset not found"
             )
-        
-        dataset = response.data
+
+        dataset = response.data[0]
         
         # Delete file from storage
         try:

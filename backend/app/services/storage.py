@@ -134,3 +134,36 @@ class StorageService:
 
 # Global storage service instance
 storage_service = StorageService()
+
+
+def get_signed_download_url(
+    resource_id: str,
+    bucket: str = "synthetic",
+    expires_in: int = 3600,
+) -> str:
+    """
+    Generate a signed download URL for a synthetic dataset.
+
+    Args:
+        resource_id: The synthetic dataset ID
+        bucket: Storage bucket name (default: synthetic)
+        expires_in: URL expiration time in seconds (default: 1 hour)
+
+    Returns:
+        Signed URL for download
+    """
+    supabase = get_supabase()
+
+    try:
+        response = supabase.storage.from_(bucket).create_signed_url(
+            path=resource_id,
+            expires_in=expires_in,
+        )
+
+        if isinstance(response, dict) and "signedURL" in response:
+            return response["signedURL"]
+
+        raise Exception("Failed to generate signed URL")
+
+    except Exception as e:
+        raise Exception(f"Failed to generate download URL: {str(e)}")

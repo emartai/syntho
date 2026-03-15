@@ -34,10 +34,55 @@ def _is_job_cancelled(synthetic_dataset_id: str) -> bool:
         .table("synthetic_datasets")
         .select("status")
         .eq("id", synthetic_dataset_id)
-        .single()
+        .limit(1)
         .execute()
     )
-    return (response.data or {}).get("status") == "failed"
+    rows = response.data or []
+    return (rows[0] if rows else {}).get("status") == "failed"
+
+
+class _TrackingIter:
+    """Tqdm-compatible iterator that emits progress and checks for cancellation."""
+
+    def __init__(
+        self,
+        iterable,
+        total_epochs: int,
+        synthetic_dataset_id: str,
+        on_epoch: Callable[[int, int], None],
+        cancel_check: Callable[[str], bool],
+    ) -> None:
+        self._iter = iter(iterable)
+        self._total_epochs = total_epochs
+        self._synthetic_dataset_id = synthetic_dataset_id
+        self._on_epoch = on_epoch
+        self._cancel_check = cancel_check
+        self._idx = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        value = next(self._iter)
+        self._idx += 1
+        if self._idx % 10 == 0 or self._idx == self._total_epochs:
+            if self._cancel_check(self._synthetic_dataset_id):
+                raise CancelledError("Generation cancelled by user")
+            self._on_epoch(self._idx, self._total_epochs)
+        return value
+
+    # tqdm interface stubs
+    def set_description(self, *args, **kwargs):
+        pass
+
+    def update(self, *args, **kwargs):
+        pass
+
+    def close(self):
+        pass
+
+    def set_postfix(self, *args, **kwargs):
+        pass
 
 
 @contextmanager
@@ -57,14 +102,7 @@ def _patch_ctgan_progress(
     original_tqdm = ctgan_module.tqdm
 
     def tracking_tqdm(iterable, *args, **kwargs):
-        for idx, value in enumerate(iterable, start=1):
-            if idx % 10 == 0 or idx == total_epochs:
-                if cancel_check(synthetic_dataset_id):
-                    raise CancelledError("Generation cancelled by user")
-
-                on_epoch(idx, total_epochs)
-
-            yield value
+        return _TrackingIter(iterable, total_epochs, synthetic_dataset_id, on_epoch, cancel_check)
 
     ctgan_module.tqdm = tracking_tqdm
     try:
@@ -79,7 +117,10 @@ def generate_ctgan(df: pd.DataFrame, config: dict[str, Any], synthetic_dataset_i
 
     num_rows = int(config.get("num_rows", len(df)))
     epochs = int(config.get("epochs", 300))
+    pac = int(config.get("pac", 10))
     batch_size = int(config.get("batch_size", 500))
+    # batch_size must be divisible by pac (CTGAN discriminator requirement)
+    batch_size = max(pac, (batch_size // pac) * pac) if batch_size % pac != 0 else batch_size
     discrete_columns = _detect_discrete_columns(df)
 
     metadata = SingleTableMetadata()
@@ -89,6 +130,7 @@ def generate_ctgan(df: pd.DataFrame, config: dict[str, Any], synthetic_dataset_i
         metadata=metadata,
         epochs=epochs,
         batch_size=batch_size,
+        pac=pac,
         verbose=True,
     )
 
@@ -108,7 +150,7 @@ def generate_ctgan(df: pd.DataFrame, config: dict[str, Any], synthetic_dataset_i
         update_job_progress(synthetic_dataset_id, progress, "running", "Training model")
 
     with _patch_ctgan_progress(epochs, synthetic_dataset_id, on_epoch, cancel_check):
-        synthesizer.fit(data=df, discrete_columns=discrete_columns)
+        synthesizer.fit(data=df)
 
     raise_if_cancelled()
     update_job_progress(synthetic_dataset_id, 80, "running", "Generating data")

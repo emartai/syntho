@@ -20,8 +20,7 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
-    } catch (error) {
-      console.error('Error signing in:', error);
+    } catch {
       setLoading(null);
     }
   };

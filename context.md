@@ -306,6 +306,7 @@ FLUTTERWAVE_WEBHOOK_HASH=your_flutterwave_webhook_hash
 MODAL_API_URL=https://your-username--syntho-ml-run-job.modal.run
 MODAL_API_SECRET=your_modal_shared_secret
 REDIS_URL=your_render_redis_url
+GROQ_API_KEY=your_groq_api_key
 ```
 
 ### Modal ML (modal.com/secrets → syntho-secrets)

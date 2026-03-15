@@ -24,11 +24,11 @@ const riskColors: Record<PrivacyScoreType['risk_level'], string> = {
   critical: '#ef4444',
 };
 
-const riskBadgeVariant: Record<PrivacyScoreType['risk_level'], 'success' | 'warning' | 'danger'> = {
-  low: 'success',
-  medium: 'warning',
-  high: 'warning',
-  critical: 'danger',
+const riskBadgeVariant: Record<PrivacyScoreType['risk_level'], 'default' | 'destructive'> = {
+  low: 'default',
+  medium: 'default',
+  high: 'destructive',
+  critical: 'destructive',
 };
 
 export function PrivacyScore({ privacyScore }: PrivacyScoreProps) {
@@ -89,7 +89,7 @@ export function PrivacyScore({ privacyScore }: PrivacyScoreProps) {
                 startAngle={90}
                 endAngle={-270}
               >
-                <RadialBar background clockWise dataKey="value" cornerRadius={12} />
+                <RadialBar background dataKey="value" cornerRadius={12} />
               </RadialBarChart>
             </ResponsiveContainer>
           </div>

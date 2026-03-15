@@ -6,9 +6,13 @@ import { AuthProvider } from '@/components/providers/AuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
-    title: 'Syntho — Synthetic Data Marketplace',
+    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://syntho.vercel.app'),
+    title: {
+        default: 'Syntho — Synthetic Data Marketplace',
+        template: '%s | Syntho',
+    },
     description:
-        'Generate safe synthetic data at scale. Upload real datasets, generate privacy-safe synthetic versions, score privacy risk, and sell on the marketplace.',
+        'Generate safe synthetic data, score privacy risk, and monetize your datasets. Upload real data, create privacy-safe synthetic versions, and sell on the marketplace.',
     keywords: [
         'synthetic data',
         'data marketplace',
@@ -17,13 +21,46 @@ export const metadata: Metadata = {
         'HIPAA',
         'machine learning',
         'data generation',
+        'CTGAN',
+        'SDV',
+        'data privacy',
     ],
     authors: [{ name: 'Syntho' }],
-    openGraph: {
-        title: 'Syntho — Synthetic Data Marketplace',
-        description: 'Generate safe synthetic data at scale.',
-        type: 'website',
+    creator: 'Syntho',
+    publisher: 'Syntho',
+    robots: {
+        index: true,
+        follow: true,
     },
+    openGraph: {
+        type: 'website',
+        locale: 'en_US',
+        url: 'https://syntho.app',
+        siteName: 'Syntho',
+        title: 'Syntho — Synthetic Data Marketplace',
+        description: 'Generate safe synthetic data, score privacy risk, and monetize your datasets.',
+        images: [
+            {
+                url: '/og-image.png',
+                width: 1200,
+                height: 630,
+                alt: 'Syntho — Synthetic Data Marketplace',
+            },
+        ],
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'Syntho — Synthetic Data Marketplace',
+        description: 'Generate safe synthetic data, score privacy risk, and monetize your datasets.',
+        images: ['/og-image.png'],
+        creator: '@syntho',
+    },
+    icons: {
+        icon: '/favicon.ico',
+        shortcut: '/favicon-16x16.png',
+        apple: '/apple-touch-icon.png',
+    },
+    manifest: '/site.webmanifest',
 };
 
 export default function RootLayout({
@@ -32,8 +69,14 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en" className="dark" suppressHydrationWarning>
+        <html lang="en" className="dark scroll-smooth" suppressHydrationWarning>
             <head>
+                {/* Preconnect to font origins to eliminate connection setup latency */}
+                <link rel="preconnect" href="https://api.fontshare.com" />
+                <link rel="dns-prefetch" href="https://api.fontshare.com" />
+                <link rel="preconnect" href="https://fonts.googleapis.com" />
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+
                 {/* Clash Display — Display headings */}
                 <link
                     href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700&display=swap"

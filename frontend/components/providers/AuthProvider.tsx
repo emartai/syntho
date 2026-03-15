@@ -31,11 +31,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Use a ref to store the supabase client to avoid recreating it on every render
-  const [supabase] = useState(() => createClient());
+  // Use singleton client to avoid lock conflicts
+  const supabase = createClient();
 
   const fetchProfile = async (userId: string) => {
-    console.log('AuthProvider: Fetching profile for', userId);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -44,13 +43,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
-        console.warn('AuthProvider: Profile fetch error (may not exist yet):', error.message);
         return null;
       }
-      console.log('AuthProvider: Profile fetched successfully');
       return data as Profile;
-    } catch (err) {
-      console.error('AuthProvider: Unexpected profile fetch error:', err);
+    } catch {
       return null;
     }
   };
@@ -69,34 +65,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // This prevents the user from being stuck indefinitely if Supabase hangs.
     const loadingTimeout = setTimeout(() => {
       if (mounted && isLoading) {
-        console.warn('AuthProvider: Loading timeout reached, forcing isLoading = false');
         setIsLoading(false);
       }
     }, 8000);
 
     async function initializeAuth() {
-      console.log('AuthProvider: Initializing auth state...');
       try {
-        // Use getUser() for better security and reliability than getSession()
-        const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
-        
-        if (!mounted) return;
+        // Step 1: Read cached session from localStorage — instant, no network.
+        // Unblocks page rendering immediately while we validate in background.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && mounted) {
+          setUser(session.user);
+          setIsLoading(false);
+          clearTimeout(loadingTimeout);
+          // Fetch profile without blocking — page is already visible
+          fetchProfile(session.user.id).then(p => { if (mounted) setProfile(p); });
+        }
 
-        if (userError) {
-          console.log('AuthProvider: No active user session');
+        // Step 2: Validate JWT with Supabase server in background (security).
+        const { data: { user: verifiedUser } } = await supabase.auth.getUser();
+        if (!mounted) return;
+        if (!verifiedUser) {
+          // Token was invalid or expired — clear state
           setUser(null);
           setProfile(null);
-        } else if (currentUser) {
-          console.log('AuthProvider: User detected:', currentUser.id);
-          setUser(currentUser);
-          const p = await fetchProfile(currentUser.id);
-          if (mounted) setProfile(p);
         }
-      } catch (err) {
-        console.error('AuthProvider: Initialization failed:', err);
+      } catch {
+        // Auth init failed — user remains unauthenticated
       } finally {
         if (mounted) {
-          console.log('AuthProvider: Initialization complete, setting isLoading = false');
           setIsLoading(false);
           clearTimeout(loadingTimeout);
         }
@@ -108,8 +105,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
-
-        console.log('AuthProvider: Auth state changed event:', event);
         
         // Handle specific events
         if (event === 'SIGNED_OUT') {
@@ -141,10 +136,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
       clearTimeout(loadingTimeout);
     };
-  }, [supabase]); // Re-run if supabase client somehow changes
+  }, []); // Empty deps - supabase is now a singleton
 
   const signOut = async () => {
-    console.log('AuthProvider: Signing out...');
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);

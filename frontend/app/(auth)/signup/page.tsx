@@ -20,8 +20,7 @@ export default function SignupPage() {
         },
       });
       if (error) throw error;
-    } catch (error) {
-      console.error('Error signing up:', error);
+    } catch {
       setLoading(null);
     }
   };

@@ -2,22 +2,10 @@ import io
 import os
 
 import modal
-import pandas as pd
 from fastapi import Header, HTTPException
 
-from modal_ml.compliance_reporter import compliance_reporter
-from modal_ml.correlation_validator import correlation_validator
-from modal_ml.ctgan_generator import CancelledError, generate_ctgan
-from modal_ml.privacy_scorer import privacy_scorer
-from modal_ml.quality_reporter import quality_reporter
-from modal_ml.sdv_generator import generate_gaussian_copula
-from modal_ml.utils import (
-    download_from_storage,
-    log_job_event,
-    supabase_client,
-    update_job_progress,
-    upload_to_storage,
-)
+# Defer heavy imports to runtime to allow Modal CLI deployment
+# These will be imported inside functions when needed
 
 
 app = modal.App("syntho-ml")
@@ -27,7 +15,7 @@ ml_image = (
     .pip_install(
         [
             "sdv==1.9.0",
-            "ctgan==0.7.5",
+            "ctgan>=0.8,<0.9",
             "scikit-learn",
             "scipy",
             "presidio-analyzer",
@@ -43,10 +31,15 @@ ml_image = (
         ]
     )
     .run_commands(["python -m spacy download en_core_web_lg"])
+    .add_local_dir("modal_ml", remote_path="/usr/local/lib/python3.11/site-packages/modal_ml")
 )
 
 
 def _dispatch_generator(method: str):
+    # Import at runtime
+    from modal_ml.ctgan_generator import generate_ctgan
+    from modal_ml.sdv_generator import generate_gaussian_copula
+    
     if method == "ctgan":
         return generate_ctgan
     if method == "gaussian_copula":
@@ -54,7 +47,11 @@ def _dispatch_generator(method: str):
     raise ValueError(f"Unsupported generation method: {method}")
 
 
-def _load_source_dataframe(file_bytes: bytes, file_path: str, file_type: str | None = None) -> pd.DataFrame:
+def _load_source_dataframe(file_bytes: bytes, file_path: str, file_type: str | None = None):
+    # Import at runtime
+    import pandas as pd
+    import io
+    
     extension = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
 
     if file_type == "text/csv" or extension == "csv":
@@ -81,7 +78,7 @@ def _load_source_dataframe(file_bytes: bytes, file_path: str, file_type: str | N
     timeout=3600,
     secrets=[modal.Secret.from_name("syntho-secrets")],
 )
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 async def run_job(payload: dict, x_api_secret: str = Header(default="")):
     expected_secret = os.environ.get("MODAL_API_SECRET")
     if not expected_secret:
@@ -107,6 +104,21 @@ async def run_job(payload: dict, x_api_secret: str = Header(default="")):
     secrets=[modal.Secret.from_name("syntho-secrets")],
 )
 async def generate_synthetic(payload: dict):
+    # Import at runtime to avoid local import issues during deployment
+    import pandas as pd
+    from modal_ml.ctgan_generator import CancelledError
+    from modal_ml.utils import (
+        download_from_storage,
+        log_job_event,
+        supabase_client,
+        update_job_progress,
+        upload_to_storage,
+    )
+    from modal_ml.privacy_scorer import score_privacy
+    from modal_ml.correlation_validator import correlation_validator
+    from modal_ml.quality_reporter import quality_reporter
+    from modal_ml.compliance_reporter import compliance_reporter
+    
     synthetic_dataset_id = payload["synthetic_dataset_id"]
 
     def is_job_cancelled(dataset_id: str) -> bool:
@@ -128,9 +140,15 @@ async def generate_synthetic(payload: dict):
         raise_if_cancelled()
         update_job_progress(synthetic_dataset_id, progress, "running", message)
 
+    def _log(event: str, message: str) -> None:
+        try:
+            log_job_event(synthetic_dataset_id, event, message)
+        except Exception:
+            pass  # job_logs table may not exist yet; non-fatal
+
     try:
         update_running_progress(5, "Job started")
-        log_job_event(synthetic_dataset_id, "started", "Synthetic generation started")
+        _log("started", "Synthetic generation started")
 
         source_bytes = download_from_storage("datasets", payload["original_file_path"])
         update_running_progress(20, "Downloaded source dataset")
@@ -148,6 +166,7 @@ async def generate_synthetic(payload: dict):
         if payload["method"] == "gaussian_copula":
             synthetic_df = generator(source_df, generator_config, synthetic_dataset_id)
         else:
+            import pandas as pd
             generated = generator(source_df, generator_config, synthetic_dataset_id)
             synthetic_df = generated if isinstance(generated, pd.DataFrame) else pd.DataFrame(generated)
 
@@ -167,20 +186,32 @@ async def generate_synthetic(payload: dict):
         ).eq("id", synthetic_dataset_id).execute()
 
         update_running_progress(92, "Scoring privacy")
-        privacy_scorer(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
-        correlation_validator(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
-        quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
-        compliance_reporter(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        try:
+            score_privacy(source_df, synthetic_df, synthetic_dataset_id)
+        except Exception as _e:
+            _log("warn", f"privacy scoring skipped: {_e}")
+        try:
+            correlation_validator(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        except Exception as _e:
+            _log("warn", f"correlation validator skipped: {_e}")
+        try:
+            quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        except Exception as _e:
+            _log("warn", f"quality reporter skipped: {_e}")
+        try:
+            compliance_reporter(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+        except Exception as _e:
+            _log("warn", f"compliance reporter skipped: {_e}")
 
         update_job_progress(synthetic_dataset_id, 100, "completed", "Synthetic generation completed")
-        log_job_event(synthetic_dataset_id, "completed", "Synthetic dataset generation completed")
+        _log("completed", "Synthetic dataset generation completed")
 
     except CancelledError as exc:
         update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))
-        log_job_event(synthetic_dataset_id, "cancelled", str(exc))
+        _log("cancelled", str(exc))
         return
 
     except Exception as exc:
         update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))
-        log_job_event(synthetic_dataset_id, "failed", str(exc))
+        _log("failed", str(exc))
         raise

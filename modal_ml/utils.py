@@ -28,16 +28,22 @@ def update_job_progress(
 ) -> None:
     """Update synthetic dataset status/progress fields in Supabase."""
     supabase = supabase_client()
-    payload: dict[str, Any] = {
+    base_payload: dict[str, Any] = {
         "progress": progress,
         "status": status,
         "updated_at": datetime.utcnow().isoformat(),
     }
 
-    if message:
-        payload["error_message" if status == "failed" else "status_message"] = message
+    if message and status == "failed":
+        # Try with error_message column first; fall back without it if column missing
+        try:
+            full_payload = {**base_payload, "error_message": message}
+            supabase.table("synthetic_datasets").update(full_payload).eq("id", synthetic_dataset_id).execute()
+            return
+        except Exception:
+            pass
 
-    supabase.table("synthetic_datasets").update(payload).eq("id", synthetic_dataset_id).execute()
+    supabase.table("synthetic_datasets").update(base_payload).eq("id", synthetic_dataset_id).execute()
 
 
 def download_from_storage(bucket: str, path: str) -> bytes:
@@ -64,7 +70,7 @@ def upload_to_storage(
 def log_job_event(synthetic_dataset_id: str, event: str, message: str) -> None:
     """Persist timeline events for job observability."""
     supabase = supabase_client()
-    supabase.table("job_events").insert(
+    supabase.table("job_logs").insert(
         {
             "synthetic_dataset_id": synthetic_dataset_id,
             "event": event,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Download, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, XCircle, Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -111,6 +111,16 @@ export function ComplianceReport({ syntheticDatasetId }: ComplianceReportProps) 
         <Checklist title="GDPR Checklist" checks={gdprChecks} />
 
         <Checklist title="HIPAA Checklist" checks={hipaaChecks} />
+
+        {data.ai_explanation && (
+          <div className="rounded-lg border border-[rgba(6,182,212,0.20)] bg-[rgba(6,182,212,0.08)] p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-4 w-4 text-accent" />
+              <span className="text-sm font-medium text-accent">AI Summary</span>
+            </div>
+            <p className="text-sm text-[rgba(241,240,255,0.80)]">{data.ai_explanation}</p>
+          </div>
+        )}
 
         <Button asChild className="gap-2">
           <a href={data.signed_url || '#'} target="_blank" rel="noreferrer" aria-disabled={!data.signed_url}>

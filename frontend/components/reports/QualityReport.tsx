@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { CorrelationHeatmap } from '@/components/charts/CorrelationHeatmap';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,8 @@ export function QualityReport({ report }: QualityReportProps) {
     original?: Record<string, Record<string, number>>;
     synthetic?: Record<string, Record<string, number>>;
   };
+  const aiAdvice = columnStats.ai_advice as string | undefined;
+  const [showAdvice, setShowAdvice] = useState(false);
 
   const badgeVariant = report.overall_score >= 85 ? 'success' : report.overall_score >= 70 ? 'warning' : 'danger';
 
@@ -49,7 +52,7 @@ export function QualityReport({ report }: QualityReportProps) {
       <CardHeader className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Quality Report</CardTitle>
-          <Badge variant={badgeVariant}>Overall Score: {report.overall_score.toFixed(1)}</Badge>
+          <Badge variant={report.overall_score >= 70 ? 'default' : 'secondary'}>Overall Score: {report.overall_score.toFixed(1)}</Badge>
         </div>
 
         <div
@@ -93,11 +96,43 @@ export function QualityReport({ report }: QualityReportProps) {
                     {entry.type} • {entry.method} • statistic {entry.statistic.toFixed(4)} • p-value {entry.p_value.toFixed(4)}
                   </p>
                 </div>
-                <Badge variant={entry.passed ? 'success' : 'warning'}>{entry.passed ? 'Pass' : 'Fail'}</Badge>
+                <Badge variant={entry.passed ? 'default' : 'secondary'}>{entry.passed ? 'Pass' : 'Fail'}</Badge>
               </div>
             ))}
           </div>
         </div>
+
+        {report.overall_score < 70 && (
+          <div className="rounded-lg border border-[rgba(167,139,250,0.15)] bg-[rgba(167,139,250,0.05)] p-4">
+            <button
+              onClick={() => setShowAdvice(!showAdvice)}
+              className="flex items-center gap-2 w-full text-left"
+            >
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-primary">AI Advice</span>
+              {showAdvice ? (
+                <ChevronUp className="h-4 w-4 ml-auto text-[rgba(241,240,255,0.38)]" />
+              ) : (
+                <ChevronDown className="h-4 w-4 ml-auto text-[rgba(241,240,255,0.38)]" />
+              )}
+            </button>
+            {showAdvice && (
+              <div className="mt-3 pl-6 space-y-2">
+                {aiAdvice ? (
+                  aiAdvice.split('\n').filter(Boolean).map((line, i) => (
+                    <p key={i} className="text-sm text-[rgba(241,240,255,0.80)]">
+                      {line.replace(/^[•\-]\s*/, '• ')}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-sm text-[rgba(241,240,255,0.38)]">
+                    AI advice will appear here after quality analysis completes.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

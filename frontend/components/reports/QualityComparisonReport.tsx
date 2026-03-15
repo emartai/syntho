@@ -51,12 +51,12 @@ function formatValue(value: NullableNumber | number | undefined) {
 
 function driftBadge(score: number) {
   if (score < 0.2) {
-    return <Badge variant="success">Low Drift</Badge>;
+    return <Badge variant="default">Low Drift</Badge>;
   }
   if (score < 0.5) {
-    return <Badge variant="warning">Medium Drift</Badge>;
+    return <Badge variant="default">Medium Drift</Badge>;
   }
-  return <Badge variant="danger">High Drift</Badge>;
+  return <Badge variant="destructive">High Drift</Badge>;
 }
 
 export function QualityComparisonReport({

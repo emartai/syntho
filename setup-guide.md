@@ -359,20 +359,20 @@ For local development, set `NEXT_PUBLIC_API_URL=http://localhost:8000` in fronte
 Before running Prompt 1, confirm you have all of these:
 
 ### Frontend (.env.local)
-- [ ] `NEXT_PUBLIC_SUPABASE_URL`
-- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- [ ] `NEXT_PUBLIC_API_URL`
-- [ ] `NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY`
+- [ ] `NEXT_PUBLIC_SUPABASE_URL` — Get from Supabase Dashboard → Settings → API
+- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Get from Supabase Dashboard → Settings → API
+- [ ] `NEXT_PUBLIC_API_URL` — Your Render backend URL (e.g., https://syntho-api.onrender.com)
+- [ ] `NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY` — Get from Flutterwave Dashboard → Settings → API Keys
+- [ ] `NEXT_PUBLIC_FLAG_MARKETPLACE=false` — Must be false for MVP
+- [ ] `NEXT_PUBLIC_FLAG_API_KEYS=false` — Must be false for MVP
+- [ ] `NEXT_PUBLIC_FLAG_GROQ_AI=false` — Must be false for MVP
+- [ ] `NEXT_PUBLIC_FLAG_ADMIN_PANEL=false` — Must be false for MVP
+- [ ] `NEXT_PUBLIC_FLAG_NOTIFICATIONS=false` — Must be false for MVP
+- [ ] `NEXT_PUBLIC_FLAG_TEAM_ACCOUNTS=false` — Must be false for MVP
 
 ### Backend (.env)
-- [ ] `SUPABASE_URL`
-- [ ] `SUPABASE_SERVICE_KEY`
-- [ ] `SUPABASE_JWT_SECRET`
-- [ ] `FLUTTERWAVE_SECRET_KEY`
-- [ ] `FLUTTERWAVE_WEBHOOK_HASH`
-- [ ] `MODAL_API_URL` *(add after Prompt 7 — Modal deploy)*
-- [ ] `MODAL_API_SECRET`
-- [ ] `REDIS_URL`
+- [ ] `SUPABASE_URL` — Get from Supabase Dashboard → Settings → API
+- [ ] `SUPABASE_SERVICE_KEY` — Get from Supabase Dashboard
 
 ### Modal ML (modal.com/secrets → syntho-secrets)
 - [ ] `SUPABASE_URL`
@@ -427,7 +427,105 @@ Week 5: Polish + Launch
 
 ---
 
-## 10. Quick Troubleshooting Reference
+## 10. Running the Production Readiness Audit
+
+After completing all setup steps, run the production readiness audit to verify everything is configured correctly.
+
+### Quick Audit Check
+
+```bash
+# From project root
+python run_production_audit.py
+```
+
+This automated script checks:
+- ✅ All required environment variables present
+- ✅ All required files exist
+- ✅ Feature flags set correctly for MVP
+- ⚠️  Identifies what needs manual testing
+
+### Expected Output
+
+If setup is complete, you should see:
+```
+ENVIRONMENT................... PASS
+SUPABASE SCHEMA............... MANUAL CHECK REQUIRED
+BACKEND HEALTH................ MANUAL CHECK REQUIRED
+FRONTEND BUILD................ MANUAL CHECK REQUIRED
+...
+```
+
+If environment variables are missing:
+```
+ENVIRONMENT................... BLOCKED
+⚠️  MISSING: NEXT_PUBLIC_API_URL — Backend API URL
+⚠️  MISSING: REDIS_URL — Redis connection URL
+...
+```
+
+### Full Testing Guide
+
+For comprehensive testing procedures, see:
+- **PRODUCTION_READINESS_REPORT.md** - Detailed test procedures for all 9 phases
+- **TEST_EXECUTION_GUIDE.md** - Quick reference commands for each test
+- **AUDIT_SUMMARY.md** - Executive summary and quick status
+
+### Manual Testing Phases
+
+After environment setup passes, complete these manual tests:
+
+1. **Phase 2: Supabase Schema** (15 min)
+   - Verify tables, RLS, storage, OAuth providers
+
+2. **Phase 3: Backend Health** (20 min)
+   - Start backend, test endpoints, verify CORS
+
+3. **Phase 4: Frontend Build** (15 min)
+   - Build, TypeScript check, lint, feature flags
+
+4. **Phase 5: Authentication** (30 min)
+   - Test OAuth login, profile creation, logout
+
+5. **Phase 6: Core User Journey** (60 min)
+   - Upload, generate, reports, download
+
+6. **Phase 7: Security Audit** (45 min)
+   - RLS, JWT, file validation, SQL injection
+
+7. **Phase 8: Landing Page** (20 min)
+   - UI/UX verification, responsive design
+
+8. **Phase 9: Performance** (20 min)
+   - API response times, bundle sizes
+
+**Total Testing Time:** ~4 hours
+
+### Pre-Launch Checklist
+
+Before deploying to production:
+
+```bash
+# 1. Environment check
+python run_production_audit.py
+
+# 2. Backend tests
+cd backend && pytest tests/ -v
+
+# 3. Frontend build
+cd frontend && npm run build
+
+# 4. TypeScript check
+cd frontend && npx tsc --noEmit
+
+# 5. Lint check
+cd frontend && npx next lint
+```
+
+All checks must pass before production deployment.
+
+---
+
+## 11. Quick Troubleshooting Reference
 
 | Problem | Solution |
 |---------|----------|
