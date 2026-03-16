@@ -12,6 +12,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         display: ['Clash Display', 'sans-serif'],
+        body: ['Satoshi', 'sans-serif'],
         sans: ['Satoshi', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
