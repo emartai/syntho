@@ -1,7 +1,7 @@
 """AI advisor service with 5 intelligent features triggered by pipeline events."""
 import json
 from typing import Any
-from app.lib.groq_client import ask_groq
+from app.services.groq_client import ask_groq
 
 
 async def analyze_schema(dataset_schema: dict, sample_rows: list) -> dict | None:
