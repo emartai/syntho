@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useFlutterwave, closePaymentModal } from 'flutterwave-react-v3';
-import { Check, Download, X } from 'lucide-react';
+import { Check, Download } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
-import { generateTxRef } from '@/lib/flutterwave';
+import { generateTxRef, openFlutterwaveCheckout } from '@/lib/flutterwave';
 import { toast } from 'sonner';
 
 interface CheckoutModalProps {
@@ -87,7 +86,6 @@ export function CheckoutModal({
               description: 'Please try again or contact support.',
             });
           }
-          closePaymentModal();
         },
         onClose: () => {
           setIsProcessing(false);
@@ -98,7 +96,10 @@ export function CheckoutModal({
         config.split = splitConfig;
       }
 
-      await useFlutterwave(config);
+      await openFlutterwaveCheckout({
+        ...config,
+        onclose: config.onClose,
+      });
     } catch (error: any) {
       setIsProcessing(false);
       toast.error('Failed to initialize payment', {

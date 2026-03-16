@@ -1,3 +1,8 @@
+import '@fontsource-variable/clash-display';
+import '@fontsource-variable/satoshi';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/600.css';
 import type { Metadata } from 'next';
 import { Toaster } from 'sonner';
 import { AuroraBackground } from '@/components/layout/AuroraBackground';
@@ -70,29 +75,6 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" className="dark scroll-smooth" suppressHydrationWarning>
-            <head>
-                {/* Preconnect to font origins to eliminate connection setup latency */}
-                <link rel="preconnect" href="https://api.fontshare.com" />
-                <link rel="dns-prefetch" href="https://api.fontshare.com" />
-                <link rel="preconnect" href="https://fonts.googleapis.com" />
-                <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-
-                {/* Clash Display — Display headings */}
-                <link
-                    href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700&display=swap"
-                    rel="stylesheet"
-                />
-                {/* Satoshi — Body text */}
-                <link
-                    href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&display=swap"
-                    rel="stylesheet"
-                />
-                {/* JetBrains Mono — Code / monospace */}
-                <link
-                    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
-                    rel="stylesheet"
-                />
-            </head>
             <body className="font-body antialiased min-h-screen bg-bg text-text">
                 <QueryProvider>
                     <AuthProvider>
