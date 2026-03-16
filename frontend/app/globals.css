@@ -185,7 +185,7 @@ html {
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: 'Satoshi Variable', sans-serif;
+  font-family: 'Satoshi', sans-serif;
   font-size: 14px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -293,7 +293,7 @@ body {
   color: white;
   border: none;
   border-radius: 8px;
-  font-family: 'Satoshi Variable', sans-serif;
+  font-family: 'Satoshi', sans-serif;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;

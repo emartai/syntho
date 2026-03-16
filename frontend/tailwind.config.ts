@@ -11,8 +11,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ['ClashDisplay Variable', 'sans-serif'],
-        sans: ['Satoshi Variable', 'sans-serif'],
+        display: ['Clash Display', 'sans-serif'],
+        sans: ['Satoshi', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
       colors: {
