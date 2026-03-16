@@ -7,6 +7,7 @@ from pydantic_settings import (
 )
 from typing import List, Optional
 from pathlib import Path
+from pydantic import AliasChoices, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = BASE_DIR / ".env"
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     # ── MVP-required ──────────────────────────────────────────────────────────
     supabase_url: str
     supabase_service_key: str
-    supabase_jwt_secret: str
+    supabase_jwt_secret: str = Field(validation_alias=AliasChoices("SUPABASE_JWT_SECRET", "JWT_SECRET"))
     modal_api_url: str
     modal_api_secret: str
     frontend_url: str = "http://localhost:3000"
