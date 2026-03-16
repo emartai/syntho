@@ -1,4 +1,10 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import json
+from pydantic_settings import (
+    BaseSettings,
+    EnvSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 from typing import List, Optional
 from pathlib import Path
 
@@ -47,6 +53,44 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ):
+        """Allow list settings to be provided as JSON or comma-separated strings."""
+
+        class FlexibleEnvSettingsSource(EnvSettingsSource):
+            def prepare_field_value(self, field_name, field, value, value_is_complex):
+                if field_name in {"allowed_origins", "allowed_file_types"} and isinstance(value, str):
+                    trimmed = value.strip()
+                    if not trimmed:
+                        return []
+
+                    # First try JSON list format, then gracefully fall back to comma-separated input.
+                    if trimmed.startswith("["):
+                        try:
+                            parsed = json.loads(trimmed)
+                        except json.JSONDecodeError:
+                            parsed = None
+                        if isinstance(parsed, list):
+                            return [str(item).strip() for item in parsed if str(item).strip()]
+
+                    return [item.strip() for item in trimmed.split(",") if item.strip()]
+
+                return super().prepare_field_value(field_name, field, value, value_is_complex)
+
+        return (
+            init_settings,
+            FlexibleEnvSettingsSource(settings_cls),
+            dotenv_settings,
+            file_secret_settings,
+        )
 
 
 def validate_environment(s: "Settings") -> None:
