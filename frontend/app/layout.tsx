@@ -75,6 +75,7 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" className="dark scroll-smooth" suppressHydrationWarning>
+            <head></head>
             <body className="font-body antialiased min-h-screen bg-bg text-text">
                 <QueryProvider>
                     <AuthProvider>
