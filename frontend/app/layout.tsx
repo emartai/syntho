@@ -1,9 +1,4 @@
-import '@fontsource/clash-display/600.css';
-import '@fontsource/clash-display/700.css';
-import '@fontsource/satoshi/400.css';
-import '@fontsource/satoshi/500.css';
-import '@fontsource/satoshi/600.css';
-import '@fontsource/satoshi/700.css';
+import './fonts.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import '@fontsource/jetbrains-mono/600.css';
@@ -79,7 +74,6 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" className="dark scroll-smooth" suppressHydrationWarning>
-            <head></head>
             <body className="font-body antialiased min-h-screen bg-bg text-text">
                 <QueryProvider>
                     <AuthProvider>
