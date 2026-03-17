@@ -1,232 +1,187 @@
-import axios, { AxiosError } from 'axios';
-import { createClient } from '@/lib/supabase/client';
-import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import axios, { AxiosInstance } from 'axios'
+import { createBrowserClient } from '@supabase/ssr'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
-// Create axios instance with base configuration
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 120000, // 120 second timeout for uploads
-});
-
-// Request interceptor to add auth token
-apiClient.interceptors.request.use(
-  async (config) => {
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (session?.access_token) {
-      config.headers.Authorization = `Bearer ${session.access_token}`;
-    }
-    
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Response interceptor for global error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    if (error.code === 'ECONNABORTED') {
-      toast.error('Request timed out', {
-        description: 'The server took too long to respond. Please try again.',
-      });
-      return Promise.reject(error);
-    }
-
-    if (typeof window !== 'undefined' && !window.navigator.onLine) {
-      toast.error('Connection error', {
-        description: 'Please check your internet connection and try again.',
-      });
-      return Promise.reject(error);
-    }
-
-    const status = error.response?.status;
-
-    switch (status) {
-      case 401:
-        // Clear auth state and redirect to login
-        {
-          const supabase = createClient();
-          await supabase.auth.signOut();
-          
-          toast.error('Session expired', {
-            description: 'Please sign in again to continue.',
-          });
-          
-          // Redirect to login if not already there
-          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-            window.location.href = '/login';
-          }
-        }
-        break;
-
-      case 403:
-        toast.error('Access denied', {
-          description: 'You don\'t have permission to perform this action.',
-        });
-        break;
-
-      case 404:
-        toast.error('Not found', {
-          description: 'The requested resource was not found.',
-        });
-        break;
-
-      case 429: {
-        const retryAfter = error.response?.headers['retry-after'] || 
-                          error.response?.headers['x-ratelimit-reset'] ||
-                          '60';
-        const seconds = parseInt(String(retryAfter), 10) || 60;
-        
-        toast.error('Rate limit exceeded', {
-          description: `Please try again in ${seconds} seconds.`,
-          duration: seconds * 1000,
-        });
-        break;
-      }
-
-      case 402: {
-        const data = error.response?.data as any;
-        toast.error('Monthly job limit reached', {
-          description: data?.message || 'Upgrade to Pro for unlimited generation',
-        });
-        setTimeout(() => {
-          if (typeof window !== 'undefined') {
-            window.location.href = '/settings/billing';
-          }
-        }, 1500);
-        break;
-      }
-
-      case 500:
-      case 502:
-      case 503:
-      case 504:
-        toast.error('Server error', {
-          description: 'Something went wrong on our end. Please try again later.',
-        });
-        break;
-
-      default:
-        if (status && status >= 400) {
-          const message = (error.response?.data as any)?.detail || 
-                         error.message || 
-                         'An error occurred';
-          toast.error('Error', { description: message });
-        }
-    }
-
-    return Promise.reject(error);
-  }
-);
-
-export { apiClient };
-
-// Helper function to get auth headers
-export async function getAuthHeaders() {
-  const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  return {
-    Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
-  };
+if (!BASE_URL && typeof window !== 'undefined') {
+  console.error('[Syntho] NEXT_PUBLIC_API_URL is not set')
 }
 
-// API endpoints
+async function getAccessToken(): Promise<string | null> {
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.access_token ?? null
+}
+
+const http: AxiosInstance = axios.create({
+  baseURL: BASE_URL,
+  timeout: 120000,
+})
+
+http.interceptors.request.use(async (config) => {
+  const token = await getAccessToken()
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+http.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error.response?.status
+    if (status === 401 && typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
+    if (status === 402) {
+      // Quota exceeded — let the caller handle this
+    }
+    return Promise.reject(error)
+  }
+)
+
+// Helper to always return an array safely
+function toArray<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>
+    for (const key of ['datasets', 'synthetic_datasets', 'results', 'data', 'items']) {
+      if (Array.isArray(obj[key])) return obj[key] as T[]
+    }
+  }
+  return []
+}
+
+// ── DATASETS ─────────────────────────────────────────────
+
+export async function uploadDataset(
+  file: File,
+  onProgress?: (pct: number) => void
+): Promise<any> {
+  const form = new FormData()
+  form.append('file', file)
+
+  const { data } = await http.post('/api/v1/datasets', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) {
+        onProgress(Math.round((e.loaded * 100) / e.total))
+      }
+    },
+  })
+  return data
+}
+
+export async function listDatasets(): Promise<any[]> {
+  const { data } = await http.get('/api/v1/datasets')
+  return toArray(data)
+}
+
+export async function getDataset(id: string): Promise<any> {
+  const { data } = await http.get(`/api/v1/datasets/${id}`)
+  return data
+}
+
+export async function deleteDataset(id: string): Promise<void> {
+  await http.delete(`/api/v1/datasets/${id}`)
+}
+
+// ── GENERATION ───────────────────────────────────────────
+
+export async function startGeneration(payload: {
+  dataset_id: string
+  method: 'ctgan' | 'gaussian_copula' | 'tvae'
+  num_rows?: number
+}): Promise<any> {
+  const { data } = await http.post('/api/v1/generate', payload)
+  return data
+}
+
+export async function getGenerationStatus(id: string): Promise<any> {
+  const { data } = await http.get(`/api/v1/generate/${id}/status`)
+  return data
+}
+
+export async function cancelGeneration(id: string): Promise<void> {
+  await http.patch(`/api/v1/generate/${id}/cancel`)
+}
+
+export async function listSyntheticDatasets(datasetId?: string): Promise<any[]> {
+  const url = datasetId
+    ? `/api/v1/synthetic?dataset_id=${datasetId}`
+    : '/api/v1/synthetic'
+  const { data } = await http.get(url)
+  return toArray(data)
+}
+
+export async function downloadSynthetic(id: string): Promise<string> {
+  const { data } = await http.get(`/api/v1/synthetic/${id}/download`)
+  return data?.download_url ?? data?.url ?? data
+}
+
+// ── REPORTS ──────────────────────────────────────────────
+
+export async function getPrivacyScore(syntheticId: string): Promise<any> {
+  const { data } = await http.get(`/api/v1/reports/privacy/${syntheticId}`)
+  return data
+}
+
+export async function getQualityReport(syntheticId: string): Promise<any> {
+  const { data } = await http.get(`/api/v1/reports/quality/${syntheticId}`)
+  return data
+}
+
+export async function getComplianceReport(syntheticId: string): Promise<any> {
+  const { data } = await http.get(`/api/v1/reports/compliance/${syntheticId}`)
+  return data
+}
+
+export async function downloadCompliancePDF(syntheticId: string): Promise<void> {
+  const response = await http.get(
+    `/api/v1/reports/compliance/${syntheticId}/pdf`,
+    { responseType: 'blob' }
+  )
+  const url = URL.createObjectURL(new Blob([response.data]))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `syntho-compliance-${syntheticId}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// ── BACKWARDS COMPAT (used by existing components) ──────
 export const api = {
-  // Datasets
   datasets: {
-    list: () => apiClient.get('/api/v1/datasets'),
-    get: (id: string) => apiClient.get(`/api/v1/datasets/${id}`),
+    list: () => http.get('/api/v1/datasets'),
+    get: (id: string) => http.get(`/api/v1/datasets/${id}`),
     upload: (formData: FormData, onUploadProgress?: (progress: number) => void) =>
-      apiClient.post('/api/v1/datasets', formData, {
+      http.post('/api/v1/datasets', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total && onUploadProgress) {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            onUploadProgress(progress);
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            onUploadProgress(progress)
           }
         },
       }),
-    delete: (id: string) => apiClient.delete(`/api/v1/datasets/${id}`),
-    download: (path: string) => apiClient.post('/api/v1/datasets/download', { path }),
+    delete: (id: string) => http.delete(`/api/v1/datasets/${id}`),
   },
-  
-  // Synthetic datasets
   synthetic: {
-    generate: (data: any) => apiClient.post('/api/v1/generate', data),
-    cancel: (id: string) => apiClient.patch(`/api/v1/generate/${id}/cancel`),
-    getStatus: (id: string) => apiClient.get(`/api/v1/generate/${id}/status`),
-    get: (id: string) => apiClient.get(`/api/v1/synthetic/${id}`),
-    list: () => apiClient.get('/api/v1/synthetic'),
+    generate: (data: any) => http.post('/api/v1/generate', data),
+    cancel: (id: string) => http.patch(`/api/v1/generate/${id}/cancel`),
+    getStatus: (id: string) => http.get(`/api/v1/generate/${id}/status`),
+    get: (id: string) => http.get(`/api/v1/synthetic/${id}`),
+    list: () => http.get('/api/v1/synthetic'),
   },
-  
-  // Marketplace
-  marketplace: {
-    list: (params?: any) => apiClient.get('/api/v1/marketplace', { params }),
-    get: (id: string) => apiClient.get(`/api/v1/marketplace/${id}`),
-    create: (data: any) => apiClient.post('/api/v1/marketplace/listings', data),
-    getSellerListings: () => apiClient.get('/api/v1/marketplace/my-listings'),
-    updateListing: (id: string, data: any) => apiClient.patch(`/api/v1/marketplace/listings/${id}`, data),
-    deleteListing: (id: string) => apiClient.delete(`/api/v1/marketplace/listings/${id}`),
-    toggleListing: (id: string) => apiClient.patch(`/api/v1/marketplace/listings/${id}/toggle`),
-  },
-  
-  // API Keys
-  apiKeys: {
-    list: () => apiClient.get('/api/v1/api-keys'),
-    create: (data: any) => apiClient.post('/api/v1/api-keys', data),
-    delete: (id: string) => apiClient.delete(`/api/v1/api-keys/${id}`),
-  },
-  
-
-  // Reports
   reports: {
     getCompliance: (syntheticDatasetId: string) =>
-      apiClient.get(`/api/v1/reports/compliance/${syntheticDatasetId}`),
+      http.get(`/api/v1/reports/compliance/${syntheticDatasetId}`),
   },
+}
 
-  // Purchases
-  purchases: {
-    verify: (txRef: string) => apiClient.post('/api/v1/marketplace/purchases/verify', { tx_ref: txRef }),
-    getMyPurchases: () => apiClient.get('/api/v1/marketplace/purchases/my-purchases'),
-    getDownloadUrl: (listingId: string) => apiClient.get(`/api/v1/marketplace/purchases/download/${listingId}`),
-  },
-
-  // Seller
-  seller: {
-    getRevenue: () => apiClient.get('/api/v1/marketplace/seller/revenue'),
-    getTransactions: () => apiClient.get('/api/v1/marketplace/seller/transactions'),
-    getPayoutStatus: () => apiClient.get('/api/v1/marketplace/seller/payout-status'),
-    getBanks: () => apiClient.get('/api/v1/marketplace/banks'),
-    verifyAccount: (data: { account_number: string; bank_code: string }) =>
-      apiClient.post('/api/v1/marketplace/verify-account', data),
-    setupPayout: (data: { bank_code: string; account_number: string; business_name?: string }) =>
-      apiClient.post('/api/v1/marketplace/seller/payout-setup', data),
-  },
-
-  // Webhooks
-  webhooks: {
-    flutterwave: (payload: any) => apiClient.post('/api/v1/webhooks/flutterwave', payload),
-  },
-
-  // AI
-  ai: {
-    recommendMethod: (datasetId: string) => apiClient.post(`/api/v1/ai/recommend-method/${datasetId}`),
-    explainCompliance: (reportId: string) => apiClient.post(`/api/v1/ai/explain-compliance/${reportId}`),
-    generateListingCopy: (syntheticDatasetId: string) => 
-      apiClient.post('/api/v1/ai/listing-copy', { synthetic_dataset_id: syntheticDatasetId }),
-    getQualityAdvice: (qualityReportId: string) => 
-      apiClient.post(`/api/v1/ai/quality-advice/${qualityReportId}`),
-    search: (query: string) => apiClient.get(`/api/v1/ai/search`, { params: { q: query } }),
-  },
-};
+export { http as apiClient }

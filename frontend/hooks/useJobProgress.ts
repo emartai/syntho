@@ -17,6 +17,7 @@ export interface SyntheticDataset {
   progress: number;
   status: JobStatus;
   error_message: string | null;
+  current_step: string | null;
   original_dataset_id: string;
   generation_method: string;
   row_count?: number;
