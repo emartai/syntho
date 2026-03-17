@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Database, Sparkles, Activity, DollarSign, Upload, Store, ArrowUpRight, FileText } from 'lucide-react';
+import { Database, Sparkles, Upload, ArrowUpRight, CreditCard } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -70,19 +70,15 @@ export default function DashboardPage() {
       try {
         setIsLoading(true);
 
-        const [datasetsRes, syntheticRes, apiKeysRes, purchasesRes] = await Promise.all([
+        const [datasetsRes, syntheticRes] = await Promise.all([
           supabase.from('datasets').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
           supabase.from('synthetic_datasets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'completed'),
-          supabase.from('api_keys').select('usage_count').eq('user_id', user.id),
-          supabase.from('purchases').select('amount,status').eq('buyer_id', user.id).eq('status', 'completed'),
         ]);
 
         const totalDatasets = datasetsRes.count ?? 0;
         const syntheticGenerated = syntheticRes.count ?? 0;
-        const apiCallsThisMonth = apiKeysRes.data?.reduce((sum, key) => sum + (key.usage_count ?? 0), 0) ?? 0;
-        const revenueEarned = purchasesRes.data?.reduce((sum: number, p: { amount: number }) => sum + (p.amount ?? 0), 0) ?? 0;
 
-        setStats({ totalDatasets, syntheticGenerated, apiCallsThisMonth, revenueEarned });
+        setStats({ totalDatasets, syntheticGenerated, apiCallsThisMonth: 0, revenueEarned: 0 });
 
         const activities: ActivityItem[] = [];
         if (totalDatasets > 0) {
@@ -148,7 +144,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card className="bg-[rgba(255,255,255,0.04)] border-[rgba(167,139,250,0.10)]">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-[rgba(241,240,255,0.65)]">Total Datasets</CardTitle>
@@ -171,27 +167,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-[rgba(255,255,255,0.04)] border-[rgba(167,139,250,0.10)]">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-[rgba(241,240,255,0.65)]">API Calls</CardTitle>
-            <Activity className="h-4 w-4 text-success" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-text">{isLoading ? '—' : stats.apiCallsThisMonth.toLocaleString()}</div>
-            <p className="text-xs text-[rgba(241,240,255,0.38)]">This month</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-[rgba(255,255,255,0.04)] border-[rgba(167,139,250,0.10)]">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-[rgba(241,240,255,0.65)]">Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-warning" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-text">₦{isLoading ? '—' : stats.revenueEarned.toLocaleString()}</div>
-            <p className="text-xs text-[rgba(241,240,255,0.38)]">Total earnings</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Charts — lazy-loaded to keep initial bundle small */}
@@ -225,8 +200,8 @@ export default function DashboardPage() {
                   }`}>
                     {item.type === 'upload' && <Upload className="h-5 w-5 text-primary" />}
                     {item.type === 'generation' && <Sparkles className="h-5 w-5 text-accent" />}
-                    {item.type === 'purchase' && <DollarSign className="h-5 w-5 text-success" />}
-                    {item.type === 'api_call' && <Activity className="h-5 w-5 text-warning" />}
+                    {item.type === 'purchase' && <Sparkles className="h-5 w-5 text-success" />}
+                    {item.type === 'api_call' && <Sparkles className="h-5 w-5 text-warning" />}
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-medium text-text">{item.title}</p>
@@ -259,30 +234,30 @@ export default function DashboardPage() {
           </Card>
         </Link>
 
-        <Link href="/marketplace">
+        <Link href="/upload">
           <Card className="cursor-pointer hover:bg-[rgba(255,255,255,0.07)] transition-colors bg-[rgba(255,255,255,0.04)] border-[rgba(167,139,250,0.10)]">
             <CardContent className="flex items-center gap-4 pt-6">
               <div className="w-12 h-12 rounded-lg bg-[rgba(6,182,212,0.20)] flex items-center justify-center">
-                <Store className="h-6 w-6 text-accent" />
+                <Upload className="h-6 w-6 text-accent" />
               </div>
               <div>
-                <p className="font-medium text-text">Marketplace</p>
-                <p className="text-sm text-[rgba(241,240,255,0.38)]">Browse synthetic data</p>
+                <p className="font-medium text-text">Upload Data</p>
+                <p className="text-sm text-[rgba(241,240,255,0.38)]">Upload a new dataset</p>
               </div>
               <ArrowUpRight className="h-4 w-4 ml-auto text-[rgba(241,240,255,0.38)]" />
             </CardContent>
           </Card>
         </Link>
 
-        <Link href="/api-keys">
+        <Link href="/settings/billing">
           <Card className="cursor-pointer hover:bg-[rgba(255,255,255,0.07)] transition-colors bg-[rgba(255,255,255,0.04)] border-[rgba(167,139,250,0.10)]">
             <CardContent className="flex items-center gap-4 pt-6">
               <div className="w-12 h-12 rounded-lg bg-[rgba(34,197,94,0.20)] flex items-center justify-center">
-                <FileText className="h-6 w-6 text-success" />
+                <CreditCard className="h-6 w-6 text-success" />
               </div>
               <div>
-                <p className="font-medium text-text">API Keys</p>
-                <p className="text-sm text-[rgba(241,240,255,0.38)]">Manage API access</p>
+                <p className="font-medium text-text">Billing</p>
+                <p className="text-sm text-[rgba(241,240,255,0.38)]">Manage your plan</p>
               </div>
               <ArrowUpRight className="h-4 w-4 ml-auto text-[rgba(241,240,255,0.38)]" />
             </CardContent>

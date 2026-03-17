@@ -1,73 +1,156 @@
-'use client';
+'use client'
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-import { format } from 'date-fns';
-import { Download, FileText, Shield, BarChart3, CheckCircle, AlertTriangle, Play, Trash2, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/useAuth'
+import { useJobProgress } from '@/hooks/useJobProgress'
+import { startGeneration, downloadSynthetic } from '@/lib/api'
+import { format } from 'date-fns'
+import { Download, FileText, Shield, BarChart3, CheckCircle, AlertTriangle, Play } from 'lucide-react'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { AuroraBadge } from '@/components/shared/AuroraBadge';
-import { api } from '@/lib/api';
-import { toast } from 'sonner';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 
 export default function DatasetDetailPage({ params }: { params: { id: string } }) {
-  const { user } = useAuth();
-  const supabase = createClient();
-  const [dataset, setDataset] = useState<any>(null);
-  const [syntheticVersions, setSyntheticVersions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth()
+  const supabase = createClient()
+  const [dataset, setDataset] = useState<any>(null)
+  const [syntheticVersions, setSyntheticVersions] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeSyntheticId, setActiveSyntheticId] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [selectedMethod, setSelectedMethod] = useState<string>('gaussian_copula')
+
+  const jobProgress = useJobProgress(activeSyntheticId ?? undefined)
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) return
     const fetchData = async () => {
       const { data: ds } = await supabase
         .from('datasets')
         .select('*')
         .eq('id', params.id)
         .eq('user_id', user.id)
-        .maybeSingle();
-      
+        .maybeSingle()
+
       if (!ds) {
-        setLoading(false);
-        return;
+        setLoading(false)
+        return
       }
-      setDataset(ds);
+      setDataset(ds)
 
       const { data: synth } = await supabase
         .from('synthetic_datasets')
         .select('*, privacy_scores(*), quality_reports(*)')
         .eq('original_dataset_id', params.id)
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      setSyntheticVersions(synth || []);
-      setLoading(false);
+        .order('created_at', { ascending: false })
 
-      // Fetch AI recommendation if dataset is ready
-      if (ds.status === 'ready' && !ds.schema?.ai_recommendation) {
-        fetchAiRecommendation(ds.id);
+      const versions = synth ?? []
+      setSyntheticVersions(versions)
+
+      // If there's a running job, track it
+      const runningJob = versions.find(
+        (s: any) => s.status === 'pending' || s.status === 'running'
+      )
+      if (runningJob) {
+        setActiveSyntheticId(runningJob.id)
       }
-    };
-    fetchData();
-  }, [user, params.id]);
+
+      setLoading(false)
+    }
+    fetchData()
+  }, [user, params.id])
+
+  // Update syntheticVersions when job progress changes
+  useEffect(() => {
+    if (!activeSyntheticId || !jobProgress.syntheticDataset) return
+    setSyntheticVersions((prev) =>
+      prev.map((s) =>
+        s.id === activeSyntheticId ? { ...s, ...jobProgress.syntheticDataset } : s
+      )
+    )
+    if (jobProgress.status === 'completed' || jobProgress.status === 'failed') {
+      setActiveSyntheticId(null)
+      setGenerating(false)
+    }
+  }, [jobProgress.status, jobProgress.progress, activeSyntheticId])
+
+  const handleGenerate = async () => {
+    if (!dataset) return
+    setGenerating(true)
+    try {
+      const result = await startGeneration({
+        dataset_id: dataset.id,
+        method: selectedMethod as any,
+      })
+      const newSynthId = result?.id
+      if (newSynthId) {
+        setActiveSyntheticId(newSynthId)
+        setSyntheticVersions((prev) => [
+          { id: newSynthId, status: 'pending', progress: 0, generation_method: selectedMethod, created_at: new Date().toISOString() },
+          ...prev,
+        ])
+      }
+      toast.success('Generation started!')
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail
+      if (typeof detail === 'object' && detail?.error === 'quota_exceeded') {
+        toast.error(detail.message ?? 'Quota exceeded')
+      } else {
+        toast.error(typeof detail === 'string' ? detail : 'Failed to start generation')
+      }
+      setGenerating(false)
+    }
+  }
+
+  const handleDownload = async (synthId: string) => {
+    try {
+      const url = await downloadSynthetic(synthId)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `synthetic-${synthId}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch {
+      toast.error('Download failed — please try again')
+    }
+  }
+
+  const handleOriginalDownload = async () => {
+    if (!dataset?.file_path) return
+    try {
+      const { data } = await supabase.storage.from('datasets').createSignedUrl(dataset.file_path, 3600)
+      if (data?.signedUrl) {
+        const a = document.createElement('a')
+        a.href = data.signedUrl
+        a.download = dataset.name ?? 'dataset'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      }
+    } catch {
+      toast.error('Download failed')
+    }
+  }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
-    );
+    )
   }
 
   if (!dataset) {
-    notFound();
+    notFound()
   }
 
   return (
@@ -76,31 +159,25 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
         <div>
           <h1 className="font-display text-2xl font-bold text-text">{dataset?.name ?? 'Dataset'}</h1>
           <p className="text-sm text-[rgba(241,240,255,0.65)] mt-1">
-            Uploaded {dataset.created_at ? format(new Date(dataset.created_at), 'MMMM d, yyyy') : 'Unknown'} • {(dataset.row_count ?? 0).toLocaleString()} rows • {dataset.column_count ?? 0} columns
+            Uploaded {dataset?.created_at ? format(new Date(dataset.created_at), 'MMMM d, yyyy') : 'Unknown'} · {(dataset?.row_count ?? 0).toLocaleString()} rows · {dataset?.column_count ?? 0} columns
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handleDownload(dataset.id, 'original')}>
+          <Button variant="outline" onClick={handleOriginalDownload}>
             <Download className="h-4 w-4 mr-2" />
             Download Original
           </Button>
-          <Link href={`/generate/${dataset.id}`}>
-            <Button>
-              <Play className="h-4 w-4 mr-2" />
-              Generate Synthetic
-            </Button>
-          </Link>
         </div>
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="overflow-x-auto flex-nowrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="synthetic">Synthetic Versions ({syntheticVersions.length})</TabsTrigger>
+          <TabsTrigger value="generate">Generate</TabsTrigger>
+          <TabsTrigger value="synthetic">Synthetic ({syntheticVersions.length})</TabsTrigger>
           <TabsTrigger value="privacy">Privacy Score</TabsTrigger>
           <TabsTrigger value="quality">Quality Report</TabsTrigger>
           <TabsTrigger value="compliance">Compliance</TabsTrigger>
-          <TabsTrigger value="download">Downloads</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
@@ -112,41 +189,26 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
               <CardContent className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">File Type</span>
-                  <span className="font-medium">{dataset.file_type}</span>
+                  <span className="font-medium">{dataset?.file_type ?? 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">File Size</span>
-                  <span className="font-medium">{((dataset.file_size ?? 0) / 1024 / 1024).toFixed(2)} MB</span>
+                  <span className="font-medium">{((dataset?.file_size ?? 0) / 1024 / 1024).toFixed(2)} MB</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">Rows</span>
-                  <span className="font-medium">{dataset.row_count?.toLocaleString()}</span>
+                  <span className="font-medium">{(dataset?.row_count ?? 0).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">Columns</span>
-                  <span className="font-medium">{dataset.column_count ?? 0}</span>
+                  <span className="font-medium">{dataset?.column_count ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">Status</span>
-                  <Badge variant={dataset.status === 'ready' ? 'default' : 'secondary'}>
-                    {dataset.status}
+                  <Badge variant={dataset?.status === 'ready' ? 'default' : 'secondary'}>
+                    {dataset?.status ?? 'unknown'}
                   </Badge>
                 </div>
-
-                {dataset.schema?.ai_recommendation && (
-                  <div className="mt-4 p-3 rounded-lg bg-[rgba(167,139,250,0.08)] border border-[rgba(167,139,250,0.15)]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium text-primary">AI Recommends</span>
-                    </div>
-                    <p className="text-sm text-text">
-                      {(dataset.schema.ai_recommendation.method ?? '').toUpperCase()} · {dataset.schema.ai_recommendation.epochs ?? 0} epochs · batch {dataset.schema.ai_recommendation.batch_size ?? 0}
-                    </p>
-                    <p className="text-xs text-[rgba(241,240,255,0.38)] mt-1">
-                      {dataset.schema.ai_recommendation.reason}
-                    </p>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -155,20 +217,20 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
                 <CardTitle>Schema Preview</CardTitle>
               </CardHeader>
               <CardContent>
-                {dataset.schema?.columns?.slice(0, 5).map((col: any) => (
-                  <div key={col.name} className="flex items-center justify-between py-2 border-b border-[rgba(167,139,250,0.10)] last:border-0">
+                {(dataset?.schema?.columns ?? []).slice(0, 5).map((col: any) => (
+                  <div key={col?.name ?? Math.random()} className="flex items-center justify-between py-2 border-b border-[rgba(167,139,250,0.10)] last:border-0">
                     <div>
-                      <p className="font-medium text-sm">{col.name}</p>
-                      <p className="text-xs text-[rgba(241,240,255,0.38)]">{col.data_type}</p>
+                      <p className="font-medium text-sm">{col?.name ?? 'Unknown'}</p>
+                      <p className="text-xs text-[rgba(241,240,255,0.38)]">{col?.data_type ?? 'Unknown'}</p>
                     </div>
                     <div className="text-right text-xs text-[rgba(241,240,255,0.38)]">
-                      {col.null_percentage ?? 0}% null
+                      {col?.null_percentage ?? 0}% null
                     </div>
                   </div>
                 ))}
-                {dataset.schema?.columns?.length > 5 && (
+                {(dataset?.schema?.columns ?? []).length > 5 && (
                   <p className="text-xs text-[rgba(241,240,255,0.38)] mt-2">
-                    +{dataset.schema.columns.length - 5} more columns
+                    +{(dataset?.schema?.columns ?? []).length - 5} more columns
                   </p>
                 )}
               </CardContent>
@@ -176,84 +238,120 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
           </div>
         </TabsContent>
 
+        <TabsContent value="generate" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Generate Synthetic Data</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm text-[rgba(241,240,255,0.65)] block mb-2">Generation Method</label>
+                <select
+                  value={selectedMethod}
+                  onChange={(e) => setSelectedMethod(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[rgba(167,139,250,0.20)] bg-[rgba(255,255,255,0.04)] text-sm text-white"
+                  disabled={generating}
+                >
+                  <option value="gaussian_copula">Gaussian Copula (faster)</option>
+                  <option value="ctgan">CTGAN (more accurate)</option>
+                </select>
+              </div>
+
+              {activeSyntheticId && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[rgba(241,240,255,0.65)]">
+                      {jobProgress.syntheticDataset?.current_step ?? jobProgress.status}
+                    </span>
+                    <span>{jobProgress.progress}%</span>
+                  </div>
+                  <Progress value={jobProgress.progress} className="h-2" />
+                  {jobProgress.status === 'failed' && (
+                    <p className="text-sm text-red-400">
+                      {jobProgress.error ?? 'Generation failed'}
+                    </p>
+                  )}
+                  {jobProgress.status === 'completed' && (
+                    <p className="text-sm text-green-400">Generation complete!</p>
+                  )}
+                </div>
+              )}
+
+              <Button
+                onClick={handleGenerate}
+                disabled={generating || !!activeSyntheticId}
+                className="w-full"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                {generating ? 'Generating...' : 'Start Generation'}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="synthetic" className="mt-4">
           {syntheticVersions.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
-                <Sparkles className="h-12 w-12 text-[rgba(241,240,255,0.20)] mx-auto mb-3" />
                 <p className="text-[rgba(241,240,255,0.65)] mb-4">No synthetic versions generated yet</p>
-                <Link href={`/generate/${dataset.id}`}>
-                  <Button>
-                    <Play className="h-4 w-4 mr-2" />
-                    Generate First Synthetic Version
-                  </Button>
-                </Link>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
-              {syntheticVersions.map((synth) => (
-                <Card key={synth.id}>
+              {syntheticVersions.map((synth: any) => (
+                <Card key={synth?.id ?? Math.random()}>
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-medium capitalize">{(synth.generation_method ?? '').replace('_', ' ')}</h3>
-                          <Badge variant={synth.status === 'completed' ? 'default' : 'secondary'}>
-                            {synth.status}
+                          <h3 className="font-medium capitalize">{(synth?.generation_method ?? '').replace('_', ' ')}</h3>
+                          <Badge variant={synth?.status === 'completed' ? 'default' : 'secondary'}>
+                            {synth?.status ?? 'unknown'}
                           </Badge>
                         </div>
                         <p className="text-sm text-[rgba(241,240,255,0.38)]">
-                          Generated {synth.created_at ? format(new Date(synth.created_at), 'MMM d, yyyy') : 'Unknown'} • {synth.row_count?.toLocaleString() ?? '0'} rows
+                          {synth?.created_at ? format(new Date(synth.created_at), 'MMM d, yyyy') : 'Unknown'}
+                          {' · '}{(synth?.row_count ?? 0).toLocaleString()} rows
                         </p>
                       </div>
-                      <div className="flex gap-2">
-                        {synth.status === 'completed' && (
-                          <Button variant="outline" size="sm" onClick={() => handleDownload(synth.id, 'synthetic')}>
-                            <Download className="h-4 w-4 mr-1" />
-                            Download
-                          </Button>
-                        )}
-                        <Link href={`/datasets/${synth.id}`}>
-                          <Button variant="ghost" size="sm">
-                            <ExternalLink className="h-4 w-4 mr-1" />
-                            View Details
-                          </Button>
-                        </Link>
-                      </div>
+                      {synth?.status === 'completed' && (
+                        <Button variant="outline" size="sm" onClick={() => handleDownload(synth.id)}>
+                          <Download className="h-4 w-4 mr-1" />
+                          Download
+                        </Button>
+                      )}
                     </div>
 
-                    {synth.status === 'running' && (
+                    {(synth?.status === 'running' || synth?.status === 'pending') && (
                       <div className="mb-4">
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="text-[rgba(241,240,255,0.65)]">Progress</span>
-                          <span>{synth.progress}%</span>
+                          <span className="text-[rgba(241,240,255,0.65)]">
+                            {synth?.current_step ?? 'Processing'}
+                          </span>
+                          <span>{synth?.progress ?? 0}%</span>
                         </div>
-                        <Progress value={synth.progress} className="h-2" />
+                        <Progress value={synth?.progress ?? 0} className="h-2" />
                       </div>
                     )}
 
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      {synth.privacy_scores && (
+                    {synth?.status === 'failed' && synth?.error_message && (
+                      <p className="text-sm text-red-400 mt-2">{synth.error_message}</p>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-3 mt-4">
+                      {synth?.privacy_scores && (
                         <div className="rounded-lg bg-[rgba(167,139,250,0.05)] p-3">
                           <p className="text-xs text-[rgba(241,240,255,0.38)] mb-1">Privacy Score</p>
-                          <p className="text-xl font-bold text-primary">{synth.privacy_scores.overall_score}</p>
-                          <p className="text-xs text-[rgba(241,240,255,0.38)]">{synth.privacy_scores.risk_level} risk</p>
+                          <p className="text-xl font-bold text-primary">{synth.privacy_scores?.overall_score ?? 'N/A'}</p>
+                          <p className="text-xs text-[rgba(241,240,255,0.38)]">{synth.privacy_scores?.risk_level ?? 'unknown'} risk</p>
                         </div>
                       )}
-                      {synth.quality_reports && (
+                      {synth?.quality_reports && (
                         <div className="rounded-lg bg-[rgba(6,182,212,0.05)] p-3">
                           <p className="text-xs text-[rgba(241,240,255,0.38)] mb-1">Quality Score</p>
-                          <p className="text-xl font-bold text-cyan-400">{synth.quality_reports.overall_score}</p>
+                          <p className="text-xl font-bold text-cyan-400">{synth.quality_reports?.overall_score ?? 'N/A'}</p>
                         </div>
                       )}
-                      <div className="rounded-lg bg-[rgba(34,197,94,0.05)] p-3">
-                        <p className="text-xs text-[rgba(241,240,255,0.38)] mb-1">Reports</p>
-                        <div className="flex gap-1">
-                          {synth.privacy_scores && <CheckCircle className="h-4 w-4 text-green-400" />}
-                          {synth.quality_reports && <CheckCircle className="h-4 w-4 text-green-400" />}
-                        </div>
-                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -263,50 +361,38 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
         </TabsContent>
 
         <TabsContent value="privacy" className="mt-4">
-          <PrivacyTab datasetId={params.id} syntheticVersions={syntheticVersions} />
+          <PrivacyTab syntheticVersions={syntheticVersions} />
         </TabsContent>
 
         <TabsContent value="quality" className="mt-4">
-          <QualityTab datasetId={params.id} syntheticVersions={syntheticVersions} />
+          <QualityTab syntheticVersions={syntheticVersions} />
         </TabsContent>
 
         <TabsContent value="compliance" className="mt-4">
-          <ComplianceTab datasetId={params.id} syntheticVersions={syntheticVersions} />
-        </TabsContent>
-
-        <TabsContent value="download" className="mt-4">
-          <DownloadTab dataset={dataset} syntheticVersions={syntheticVersions} />
+          <ComplianceTab syntheticVersions={syntheticVersions} />
         </TabsContent>
       </Tabs>
     </div>
-  );
+  )
 }
 
-import { Sparkles, Info } from 'lucide-react';
-
-async function fetchAiRecommendation(datasetId: string) {
-  try {
-    await api.ai.recommendMethod(datasetId);
-  } catch (e) {
-    // Silently fail - AI recommendation is optional
-  }
-}
-
-function PrivacyTab({ datasetId, syntheticVersions }: { datasetId: string; syntheticVersions: any[] }) {
-  const [scores, setScores] = useState<any[]>([]);
-  const supabase = createClient();
+function PrivacyTab({ syntheticVersions }: { syntheticVersions: any[] }) {
+  const [scores, setScores] = useState<any[]>([])
+  const supabase = createClient()
 
   useEffect(() => {
+    const ids = (syntheticVersions ?? []).map((s: any) => s?.id).filter(Boolean)
+    if (ids.length === 0) return
     const fetchScores = async () => {
       const { data } = await supabase
         .from('privacy_scores')
         .select('*')
-        .in('synthetic_dataset_id', syntheticVersions.map(s => s.id))
-        .order('created_at', { ascending: false });
-      setScores(data || []);
-    };
-    if (syntheticVersions.length) fetchScores();
-  }, [syntheticVersions]);
+        .in('synthetic_dataset_id', ids)
+        .order('created_at', { ascending: false })
+      setScores(data ?? [])
+    }
+    fetchScores()
+  }, [syntheticVersions])
 
   if (scores.length === 0) {
     return (
@@ -315,33 +401,33 @@ function PrivacyTab({ datasetId, syntheticVersions }: { datasetId: string; synth
           No privacy scores available yet
         </CardContent>
       </Card>
-    );
+    )
   }
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {scores.map((score) => (
-        <Card key={score.id}>
+      {scores.map((score: any) => (
+        <Card key={score?.id ?? Math.random()}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
-              Privacy Score: {score.overall_score}
+              Privacy Score: {score?.overall_score ?? 'N/A'}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-[rgba(241,240,255,0.65)]">Risk Level</span>
-                <Badge variant={score.risk_level === 'low' ? 'default' : 'destructive'}>
-                  {score.risk_level}
+                <Badge variant={(score?.risk_level ?? '') === 'low' ? 'default' : 'destructive'}>
+                  {score?.risk_level ?? 'unknown'}
                 </Badge>
               </div>
               <div>
                 <p className="text-sm text-[rgba(241,240,255,0.38)] mb-2">PII Detected</p>
                 <div className="flex flex-wrap gap-1">
-                  {Object.entries(score.pii_detected || {}).map(([key, value]) => {
-                    if (!value) return null;
-                    return <Badge key={key} variant="outline">{key}</Badge>;
+                  {Object.entries(score?.pii_detected ?? {}).map(([key, value]) => {
+                    if (!value) return null
+                    return <Badge key={key} variant="outline">{key}</Badge>
                   })}
                 </div>
               </div>
@@ -350,24 +436,26 @@ function PrivacyTab({ datasetId, syntheticVersions }: { datasetId: string; synth
         </Card>
       ))}
     </div>
-  );
+  )
 }
 
-function QualityTab({ datasetId, syntheticVersions }: { datasetId: string; syntheticVersions: any[] }) {
-  const [reports, setReports] = useState<any[]>([]);
-  const supabase = createClient();
+function QualityTab({ syntheticVersions }: { syntheticVersions: any[] }) {
+  const [reports, setReports] = useState<any[]>([])
+  const supabase = createClient()
 
   useEffect(() => {
+    const ids = (syntheticVersions ?? []).map((s: any) => s?.id).filter(Boolean)
+    if (ids.length === 0) return
     const fetchReports = async () => {
       const { data } = await supabase
         .from('quality_reports')
         .select('*')
-        .in('synthetic_dataset_id', syntheticVersions.map(s => s.id))
-        .order('created_at', { ascending: false });
-      setReports(data || []);
-    };
-    if (syntheticVersions.length) fetchReports();
-  }, [syntheticVersions]);
+        .in('synthetic_dataset_id', ids)
+        .order('created_at', { ascending: false })
+      setReports(data ?? [])
+    }
+    fetchReports()
+  }, [syntheticVersions])
 
   if (reports.length === 0) {
     return (
@@ -376,13 +464,13 @@ function QualityTab({ datasetId, syntheticVersions }: { datasetId: string; synth
           No quality reports available yet
         </CardContent>
       </Card>
-    );
+    )
   }
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {reports.map((report) => (
-        <Card key={report.id}>
+      {reports.map((report: any) => (
+        <Card key={report?.id ?? Math.random()}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-cyan-400" />
@@ -392,45 +480,47 @@ function QualityTab({ datasetId, syntheticVersions }: { datasetId: string; synth
           <CardContent className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-primary">{report.overall_score}</p>
+                <p className="text-2xl font-bold text-primary">{report?.overall_score ?? 'N/A'}</p>
                 <p className="text-xs text-[rgba(241,240,255,0.38)]">Overall</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-cyan-400">{report.correlation_score}</p>
+                <p className="text-2xl font-bold text-cyan-400">{report?.correlation_score ?? 'N/A'}</p>
                 <p className="text-xs text-[rgba(241,240,255,0.38)]">Correlation</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-green-400">{report.distribution_score}</p>
+                <p className="text-2xl font-bold text-green-400">{report?.distribution_score ?? 'N/A'}</p>
                 <p className="text-xs text-[rgba(241,240,255,0.38)]">Distribution</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant={report.passed ? 'default' : 'destructive'}>
-                {report.passed ? 'Passed' : 'Failed'}
+              <Badge variant={report?.passed ? 'default' : 'destructive'}>
+                {report?.passed ? 'Passed' : 'Failed'}
               </Badge>
             </div>
           </CardContent>
         </Card>
       ))}
     </div>
-  );
+  )
 }
 
-function ComplianceTab({ datasetId, syntheticVersions }: { datasetId: string; syntheticVersions: any[] }) {
-  const [reports, setReports] = useState<any[]>([]);
-  const supabase = createClient();
+function ComplianceTab({ syntheticVersions }: { syntheticVersions: any[] }) {
+  const [reports, setReports] = useState<any[]>([])
+  const supabase = createClient()
 
   useEffect(() => {
+    const ids = (syntheticVersions ?? []).map((s: any) => s?.id).filter(Boolean)
+    if (ids.length === 0) return
     const fetchReports = async () => {
       const { data } = await supabase
         .from('compliance_reports')
         .select('*')
-        .in('synthetic_dataset_id', syntheticVersions.map(s => s.id))
-        .order('created_at', { ascending: false });
-      setReports(data || []);
-    };
-    if (syntheticVersions.length) fetchReports();
-  }, [syntheticVersions]);
+        .in('synthetic_dataset_id', ids)
+        .order('created_at', { ascending: false })
+      setReports(data ?? [])
+    }
+    fetchReports()
+  }, [syntheticVersions])
 
   if (reports.length === 0) {
     return (
@@ -439,30 +529,30 @@ function ComplianceTab({ datasetId, syntheticVersions }: { datasetId: string; sy
           No compliance reports available yet
         </CardContent>
       </Card>
-    );
+    )
   }
 
   return (
     <div className="space-y-4">
-      {reports.map((report) => (
-        <Card key={report.id}>
+      {reports.map((report: any) => (
+        <Card key={report?.id ?? Math.random()}>
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-medium uppercase">{(report.report_type ?? '').toUpperCase()} Compliance</h3>
-                  {report.passed ? (
+                  <h3 className="font-medium uppercase">{(report?.report_type ?? '').toUpperCase()} Compliance</h3>
+                  {report?.passed ? (
                     <CheckCircle className="h-5 w-5 text-green-400" />
                   ) : (
                     <AlertTriangle className="h-5 w-5 text-yellow-400" />
                   )}
                 </div>
                 <p className="text-sm text-[rgba(241,240,255,0.65)]">
-                  Generated {report.created_at ? format(new Date(report.created_at), 'MMM d, yyyy') : 'Unknown'}
+                  {report?.created_at ? format(new Date(report.created_at), 'MMM d, yyyy') : 'Unknown'}
                 </p>
               </div>
-              {report.file_path && (
-                <Button variant="outline" size="sm" onClick={() => handleComplianceDownload(report.id)}>
+              {report?.file_path && (
+                <Button variant="outline" size="sm">
                   <FileText className="h-4 w-4 mr-1" />
                   Download PDF
                 </Button>
@@ -472,123 +562,5 @@ function ComplianceTab({ datasetId, syntheticVersions }: { datasetId: string; sy
         </Card>
       ))}
     </div>
-  );
-}
-
-function DownloadTab({ dataset, syntheticVersions }: { dataset: any; syntheticVersions: any[] }) {
-  const handleTabDownload = async (id: string, type: 'original' | 'synthetic') => {
-    try {
-      const url = type === 'original'
-        ? await getOriginalDownloadUrl(id)
-        : await getSyntheticDownloadUrl(id);
-      if (url) {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${type}-${id}.csv`;
-        link.setAttribute('target', '_blank');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        toast.error('Download not available');
-      }
-    } catch (error: any) {
-      toast.error('Failed to get download link');
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Original Dataset</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => handleTabDownload(dataset.id, 'original')}>
-            <Download className="h-4 w-4 mr-2" />
-            Download Original ({dataset?.file_type ?? 'file'})
-          </Button>
-        </CardContent>
-      </Card>
-
-      {(syntheticVersions ?? []).filter(s => s.status === 'completed').length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Synthetic Versions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {(syntheticVersions ?? []).filter(s => s.status === 'completed').map((synth) => (
-              <div key={synth.id} className="flex items-center justify-between p-3 rounded-lg border border-[rgba(167,139,250,0.10)]">
-                <div>
-                  <p className="font-medium capitalize">{(synth.generation_method ?? '').replace('_', ' ')}</p>
-                  <p className="text-sm text-[rgba(241,240,255,0.38)]">
-                    {synth.row_count?.toLocaleString() ?? '0'} rows • {synth.created_at ? format(new Date(synth.created_at), 'MMM d, yyyy') : 'Unknown'}
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => handleTabDownload(synth.id, 'synthetic')}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Download
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Reports</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {(syntheticVersions ?? []).filter(s => s.status === 'completed').map((synth) => (
-            <div key={`reports-${synth.id}`} className="flex items-center justify-between p-3 rounded-lg border border-[rgba(167,139,250,0.10)]">
-              <div>
-                <p className="font-medium capitalize">{(synth.generation_method ?? '').replace('_', ' ')} Reports</p>
-                <p className="text-sm text-[rgba(241,240,255,0.38)]">Privacy, Quality, Compliance PDFs</p>
-              </div>
-              <Button variant="outline" size="sm">
-                <FileText className="h-4 w-4 mr-1" />
-                View Reports
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-async function getOriginalDownloadUrl(datasetId: string) {
-  const supabase = createClient();
-  const { data } = await supabase.from('datasets').select('file_path').eq('id', datasetId).single();
-  if (!data?.file_path) return null;
-  const { data: urlData } = await supabase.storage.from('datasets').createSignedUrl(data.file_path, 3600);
-  return urlData?.signedUrl;
-}
-
-async function getSyntheticDownloadUrl(synthId: string) {
-  const supabase = createClient();
-  const { data } = await supabase.from('synthetic_datasets').select('file_path').eq('id', synthId).single();
-  if (!data?.file_path) return null;
-  const { data: urlData } = await supabase.storage.from('synthetic').createSignedUrl(data.file_path, 3600);
-  return urlData?.signedUrl;
-}
-
-async function handleDownload(id: string, type: 'original' | 'synthetic') {
-  const url = type === 'original' ? await getOriginalDownloadUrl(id) : await getSyntheticDownloadUrl(id);
-  if (url) {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${type}-${id}.csv`;
-    link.setAttribute('target', '_blank');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } else {
-    toast.error('Download not available');
-  }
-}
-
-async function handleComplianceDownload(reportId: string) {
-  toast.success('Opening compliance report...');
+  )
 }

@@ -12,10 +12,7 @@ const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/datasets': 'My Datasets',
   '/upload': 'Upload Dataset',
-  '/marketplace': 'Marketplace',
-  '/sell': 'Sell Data',
-  '/api-keys': 'API Keys',
-  '/billing': 'Billing',
+  '/settings/billing': 'Billing',
 };
 
 export function Navbar() {
