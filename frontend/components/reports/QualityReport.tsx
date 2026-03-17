@@ -23,6 +23,8 @@ type DistributionResult = {
 };
 
 export function QualityReport({ report }: QualityReportProps) {
+  const [showAdvice, setShowAdvice] = useState(false);
+
   if (!report) {
     return (
       <Card>
@@ -43,16 +45,15 @@ export function QualityReport({ report }: QualityReportProps) {
     synthetic?: Record<string, Record<string, number>>;
   };
   const aiAdvice = columnStats.ai_advice as string | undefined;
-  const [showAdvice, setShowAdvice] = useState(false);
 
-  const badgeVariant = report.overall_score >= 85 ? 'success' : report.overall_score >= 70 ? 'warning' : 'danger';
+  const overallScore = report.overall_score ?? 0;
 
   return (
     <Card className="space-y-5">
       <CardHeader className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Quality Report</CardTitle>
-          <Badge variant={report.overall_score >= 70 ? 'default' : 'secondary'}>Overall Score: {report.overall_score.toFixed(1)}</Badge>
+          <Badge variant={overallScore >= 70 ? 'default' : 'secondary'}>Overall Score: {overallScore.toFixed(1)}</Badge>
         </div>
 
         <div
@@ -72,11 +73,11 @@ export function QualityReport({ report }: QualityReportProps) {
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-btn border border-border p-3">
             <p className="text-xs text-text-3">Correlation Score</p>
-            <p className="mt-1 text-xl font-semibold text-text">{report.correlation_score.toFixed(1)}%</p>
+            <p className="mt-1 text-xl font-semibold text-text">{(report.correlation_score ?? 0).toFixed(1)}%</p>
           </div>
           <div className="rounded-btn border border-border p-3">
             <p className="text-xs text-text-3">Distribution Score</p>
-            <p className="mt-1 text-xl font-semibold text-text">{report.distribution_score.toFixed(1)}%</p>
+            <p className="mt-1 text-xl font-semibold text-text">{(report.distribution_score ?? 0).toFixed(1)}%</p>
           </div>
         </div>
 
@@ -102,7 +103,7 @@ export function QualityReport({ report }: QualityReportProps) {
           </div>
         </div>
 
-        {report.overall_score < 70 && (
+        {overallScore < 70 && (
           <div className="rounded-lg border border-[rgba(167,139,250,0.15)] bg-[rgba(167,139,250,0.05)] p-4">
             <button
               onClick={() => setShowAdvice(!showAdvice)}

@@ -279,7 +279,7 @@ export default function MarketplaceListingPage() {
               </div>
 
               <div className="rounded-lg bg-[rgba(6,182,212,0.10)] p-3 text-xs text-cyan-400">
-                <p>After purchase, you'll receive:</p>
+                <p>After purchase, you&apos;ll receive:</p>
                 <ul className="mt-2 space-y-1 text-[rgba(241,240,255,0.65)]">
                   <li>• Download link for synthetic data</li>
                   <li>• Privacy score report</li>
