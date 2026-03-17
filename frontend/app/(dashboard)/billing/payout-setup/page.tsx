@@ -32,7 +32,8 @@ export default function PayoutSetupPage() {
     queryKey: ['banks'],
     queryFn: async () => {
       const response = await api.seller.getBanks();
-      return response.data.banks as Bank[];
+      const banks = response.data?.banks;
+      return (Array.isArray(banks) ? banks : []) as Bank[];
     },
   });
 

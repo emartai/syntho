@@ -47,15 +47,25 @@ export function DatasetTable({ datasets, type, onDelete }: DatasetTableProps) {
   const handleDownload = async (id: string) => {
     try {
       const response = await api.datasets.get(id);
-      if (response.data.file_path) {
-        const { data: { signedUrl } } = await apiClient.post('/api/v1/datasets/download', { path: response.data.file_path });
+      const filePath = response.data?.file_path;
+      if (filePath) {
+        const downloadRes = await apiClient.post('/api/v1/datasets/download', { path: filePath });
+        const signedUrl = downloadRes.data?.signedUrl ?? downloadRes.data?.download_url;
         if (signedUrl) {
-          window.open(signedUrl, '_blank');
+          const link = document.createElement('a');
+          link.href = signedUrl;
+          link.download = response.data?.name ?? `dataset-${id}`;
+          link.setAttribute('target', '_blank');
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          return;
         }
       }
+      toast.error('Download not available');
     } catch (error: any) {
       toast.error('Failed to get download link', {
-        description: error?.response?.data?.detail || error.message,
+        description: error?.response?.data?.detail || error?.message,
       });
     }
   };

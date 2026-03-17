@@ -94,7 +94,8 @@ export default function ApiKeysPage() {
     queryKey: ['api-keys'],
     queryFn: async () => {
       const response = await api.apiKeys.list();
-      return response.data as ApiKey[];
+      const data = response.data;
+      return (Array.isArray(data) ? data : []) as ApiKey[];
     },
   });
 
@@ -341,7 +342,7 @@ export default function ApiKeysPage() {
                         {formatScopes(key.scopes)}
                       </td>
                       <td className="py-3 px-4 text-[rgba(241,240,255,0.65)]">
-                        {key.usage_count.toLocaleString()}
+                        {(key.usage_count ?? 0).toLocaleString()}
                       </td>
                       <td className="py-3 px-4 text-[rgba(241,240,255,0.65)]">
                         {key.last_used_at

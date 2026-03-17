@@ -43,7 +43,8 @@ export default function SellPage() {
     queryKey: ['synthetic-datasets-for-sale'],
     queryFn: async () => {
       const response = await api.synthetic.list();
-      const completed = response.data.filter((d: any) => d.status === 'completed');
+      const items = Array.isArray(response.data) ? response.data : [];
+      const completed = items.filter((d: any) => d.status === 'completed');
       return completed;
     },
   });

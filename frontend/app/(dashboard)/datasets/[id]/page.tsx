@@ -72,11 +72,11 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-text">{dataset.name}</h1>
+          <h1 className="font-display text-2xl font-bold text-text">{dataset?.name ?? 'Dataset'}</h1>
           <p className="text-sm text-[rgba(241,240,255,0.65)] mt-1">
-            Uploaded {format(new Date(dataset.created_at), 'MMMM d, yyyy')} • {dataset.row_count?.toLocaleString()} rows • {dataset.column_count} columns
+            Uploaded {dataset.created_at ? format(new Date(dataset.created_at), 'MMMM d, yyyy') : 'Unknown'} • {(dataset.row_count ?? 0).toLocaleString()} rows • {dataset.column_count ?? 0} columns
           </p>
         </div>
         <div className="flex gap-2">
@@ -94,7 +94,7 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList>
+        <TabsList className="overflow-x-auto flex-nowrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="synthetic">Synthetic Versions ({syntheticVersions.length})</TabsTrigger>
           <TabsTrigger value="privacy">Privacy Score</TabsTrigger>
@@ -116,7 +116,7 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">File Size</span>
-                  <span className="font-medium">{(dataset.file_size / 1024 / 1024).toFixed(2)} MB</span>
+                  <span className="font-medium">{((dataset.file_size ?? 0) / 1024 / 1024).toFixed(2)} MB</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">Rows</span>
@@ -124,7 +124,7 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">Columns</span>
-                  <span className="font-medium">{dataset.column_count}</span>
+                  <span className="font-medium">{dataset.column_count ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[rgba(241,240,255,0.38)]">Status</span>
@@ -140,7 +140,7 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
                       <span className="text-sm font-medium text-primary">AI Recommends</span>
                     </div>
                     <p className="text-sm text-text">
-                      {dataset.schema.ai_recommendation.method.toUpperCase()} · {dataset.schema.ai_recommendation.epochs} epochs · batch {dataset.schema.ai_recommendation.batch_size}
+                      {(dataset.schema.ai_recommendation.method ?? '').toUpperCase()} · {dataset.schema.ai_recommendation.epochs ?? 0} epochs · batch {dataset.schema.ai_recommendation.batch_size ?? 0}
                     </p>
                     <p className="text-xs text-[rgba(241,240,255,0.38)] mt-1">
                       {dataset.schema.ai_recommendation.reason}
@@ -162,7 +162,7 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
                       <p className="text-xs text-[rgba(241,240,255,0.38)]">{col.data_type}</p>
                     </div>
                     <div className="text-right text-xs text-[rgba(241,240,255,0.38)]">
-                      {col.null_percentage}% null
+                      {col.null_percentage ?? 0}% null
                     </div>
                   </div>
                 ))}
@@ -198,13 +198,13 @@ export default function DatasetDetailPage({ params }: { params: { id: string } }
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-medium capitalize">{synth.generation_method.replace('_', ' ')}</h3>
+                          <h3 className="font-medium capitalize">{(synth.generation_method ?? '').replace('_', ' ')}</h3>
                           <Badge variant={synth.status === 'completed' ? 'default' : 'secondary'}>
                             {synth.status}
                           </Badge>
                         </div>
                         <p className="text-sm text-[rgba(241,240,255,0.38)]">
-                          Generated {format(new Date(synth.created_at), 'MMM d, yyyy')} • {synth.row_count?.toLocaleString()} rows
+                          Generated {synth.created_at ? format(new Date(synth.created_at), 'MMM d, yyyy') : 'Unknown'} • {synth.row_count?.toLocaleString() ?? '0'} rows
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -450,7 +450,7 @@ function ComplianceTab({ datasetId, syntheticVersions }: { datasetId: string; sy
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-medium uppercase">{report.report_type} Compliance</h3>
+                  <h3 className="font-medium uppercase">{(report.report_type ?? '').toUpperCase()} Compliance</h3>
                   {report.passed ? (
                     <CheckCircle className="h-5 w-5 text-green-400" />
                   ) : (
@@ -458,7 +458,7 @@ function ComplianceTab({ datasetId, syntheticVersions }: { datasetId: string; sy
                   )}
                 </div>
                 <p className="text-sm text-[rgba(241,240,255,0.65)]">
-                  Generated {format(new Date(report.created_at), 'MMM d, yyyy')}
+                  Generated {report.created_at ? format(new Date(report.created_at), 'MMM d, yyyy') : 'Unknown'}
                 </p>
               </div>
               {report.file_path && (
@@ -476,12 +476,22 @@ function ComplianceTab({ datasetId, syntheticVersions }: { datasetId: string; sy
 }
 
 function DownloadTab({ dataset, syntheticVersions }: { dataset: any; syntheticVersions: any[] }) {
-  const handleDownload = async (id: string, type: 'original' | 'synthetic') => {
+  const handleTabDownload = async (id: string, type: 'original' | 'synthetic') => {
     try {
       const url = type === 'original'
         ? await getOriginalDownloadUrl(id)
         : await getSyntheticDownloadUrl(id);
-      if (url) window.open(url, '_blank');
+      if (url) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${type}-${id}.csv`;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        toast.error('Download not available');
+      }
     } catch (error: any) {
       toast.error('Failed to get download link');
     }
@@ -494,28 +504,28 @@ function DownloadTab({ dataset, syntheticVersions }: { dataset: any; syntheticVe
           <CardTitle>Original Dataset</CardTitle>
         </CardHeader>
         <CardContent>
-          <Button onClick={() => handleDownload(dataset.id, 'original')}>
+          <Button onClick={() => handleTabDownload(dataset.id, 'original')}>
             <Download className="h-4 w-4 mr-2" />
-            Download Original ({dataset.file_type})
+            Download Original ({dataset?.file_type ?? 'file'})
           </Button>
         </CardContent>
       </Card>
 
-      {syntheticVersions.filter(s => s.status === 'completed').length > 0 && (
+      {(syntheticVersions ?? []).filter(s => s.status === 'completed').length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Synthetic Versions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {syntheticVersions.filter(s => s.status === 'completed').map((synth) => (
+            {(syntheticVersions ?? []).filter(s => s.status === 'completed').map((synth) => (
               <div key={synth.id} className="flex items-center justify-between p-3 rounded-lg border border-[rgba(167,139,250,0.10)]">
                 <div>
-                  <p className="font-medium capitalize">{synth.generation_method.replace('_', ' ')}</p>
+                  <p className="font-medium capitalize">{(synth.generation_method ?? '').replace('_', ' ')}</p>
                   <p className="text-sm text-[rgba(241,240,255,0.38)]">
-                    {synth.row_count?.toLocaleString()} rows • {format(new Date(synth.created_at), 'MMM d, yyyy')}
+                    {synth.row_count?.toLocaleString() ?? '0'} rows • {synth.created_at ? format(new Date(synth.created_at), 'MMM d, yyyy') : 'Unknown'}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => handleDownload(synth.id, 'synthetic')}>
+                <Button variant="outline" size="sm" onClick={() => handleTabDownload(synth.id, 'synthetic')}>
                   <Download className="h-4 w-4 mr-1" />
                   Download
                 </Button>
@@ -530,10 +540,10 @@ function DownloadTab({ dataset, syntheticVersions }: { dataset: any; syntheticVe
           <CardTitle>Reports</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {syntheticVersions.filter(s => s.status === 'completed').map((synth) => (
+          {(syntheticVersions ?? []).filter(s => s.status === 'completed').map((synth) => (
             <div key={`reports-${synth.id}`} className="flex items-center justify-between p-3 rounded-lg border border-[rgba(167,139,250,0.10)]">
               <div>
-                <p className="font-medium capitalize">{synth.generation_method.replace('_', ' ')} Reports</p>
+                <p className="font-medium capitalize">{(synth.generation_method ?? '').replace('_', ' ')} Reports</p>
                 <p className="text-sm text-[rgba(241,240,255,0.38)]">Privacy, Quality, Compliance PDFs</p>
               </div>
               <Button variant="outline" size="sm">
@@ -566,8 +576,17 @@ async function getSyntheticDownloadUrl(synthId: string) {
 
 async function handleDownload(id: string, type: 'original' | 'synthetic') {
   const url = type === 'original' ? await getOriginalDownloadUrl(id) : await getSyntheticDownloadUrl(id);
-  if (url) window.open(url, '_blank');
-  else toast.error('Download not available');
+  if (url) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${type}-${id}.csv`;
+    link.setAttribute('target', '_blank');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } else {
+    toast.error('Download not available');
+  }
 }
 
 async function handleComplianceDownload(reportId: string) {

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Upsert into waitlist table
+    // Upsert into waitlist table — duplicates are fine
     const { error } = await supabase
       .from('waitlist')
       .upsert(
@@ -25,10 +25,15 @@ export async function POST(request: NextRequest) {
         },
         {
           onConflict: 'email',
+          ignoreDuplicates: true,
         }
       );
 
     if (error) {
+      // Handle unique constraint violation gracefully
+      if (error.code === '23505') {
+        return NextResponse.json({ message: "You're already on the list!", success: true }, { status: 200 });
+      }
       return NextResponse.json(
         { error: 'Failed to join waitlist' },
         { status: 500 }

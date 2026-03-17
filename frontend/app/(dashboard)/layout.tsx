@@ -41,9 +41,9 @@ export default function DashboardLayout({
         <AuroraBackground />
         <div className="relative z-10 flex">
           <Sidebar />
-          <div className="flex-1 ml-16">
+          <div className="flex-1 ml-0 md:ml-16">
             <Navbar />
-            <main className="p-6">
+            <main className="p-4 md:p-6 pt-16 md:pt-6">
               {children}
             </main>
           </div>
