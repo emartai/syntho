@@ -126,7 +126,8 @@ export function Dropzone({ onFileSelect, uploadProgress, isUploading, error, suc
                     Drag & drop your dataset
                   </h3>
                   <p className="text-sm text-[rgba(241,240,255,0.65)] mb-4">
-                    or click to browse files
+                    <span className="hidden md:inline">or click to browse files</span>
+                    <span className="md:hidden">Tap to select file</span>
                   </p>
                 </>
               )}

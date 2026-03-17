@@ -114,7 +114,7 @@ export function Pricing() {
           <h2 className="font-display text-4xl md:text-5xl font-bold text-white mb-4">
             Simple, transparent pricing
           </h2>
-          <p className="text-white/60 text-lg">Start free. Upgrade when you're ready.</p>
+          <p className="text-white/60 text-lg">Start free. Upgrade when you&apos;re ready.</p>
         </div>
 
         {/* Currency Toggle */}
@@ -225,7 +225,7 @@ export function Pricing() {
           <div className="max-w-md mx-auto">
             {submitSuccess ? (
               <div className="text-center py-6 px-4 rounded-xl bg-[#22c55e]/10 border border-[#22c55e]/30 text-[#22c55e]">
-                ✓ You're on the list — we'll notify you
+                ✓ You&apos;re on the list — we&apos;ll notify you
               </div>
             ) : (
               <form onSubmit={handleWaitlistSubmit} className="flex gap-3">

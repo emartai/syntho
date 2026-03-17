@@ -11,7 +11,7 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 120000, // 120 second timeout for uploads
 });
 
 // Request interceptor to add auth token
@@ -35,17 +35,6 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    // Router will be used for redirects - import dynamically to avoid SSR issues
-    let router: any = null;
-    if (typeof window !== 'undefined') {
-      try {
-        const nextNavigation = require('next/navigation');
-        router = nextNavigation.useRouter();
-      } catch (e) {
-        // next/navigation not available
-      }
-    }
-    
     if (error.code === 'ECONNABORTED') {
       toast.error('Request timed out', {
         description: 'The server took too long to respond. Please try again.',
@@ -53,7 +42,7 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (!window.navigator.onLine) {
+    if (typeof window !== 'undefined' && !window.navigator.onLine) {
       toast.error('Connection error', {
         description: 'Please check your internet connection and try again.',
       });

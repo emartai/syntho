@@ -294,7 +294,7 @@ export default function BillingPage() {
   });
 
   const isSeller = sellerRevenue !== undefined;
-  const totalSpent = purchases?.reduce((sum: number, p: any) => sum + p.amount, 0) || 0;
+  const totalSpent = (Array.isArray(purchases) ? purchases : []).reduce((sum: number, p: any) => sum + (p?.amount ?? 0), 0);
 
   if (!isSeller) {
     return <PricingSection />;
@@ -367,7 +367,7 @@ export default function BillingPage() {
             <div className="flex items-center justify-center py-8">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : sellerTransactions?.length === 0 ? (
+          ) : !sellerTransactions || (Array.isArray(sellerTransactions) && sellerTransactions.length === 0) ? (
             <div className="rounded-lg border border-[rgba(167,139,250,0.10)] bg-[rgba(255,255,255,0.04)] p-8 text-center">
               <p className="text-[rgba(241,240,255,0.65)]">No transactions yet</p>
               <p className="text-sm text-[rgba(241,240,255,0.38)] mt-1">Your sales will appear here once buyers purchase your datasets</p>
@@ -386,14 +386,14 @@ export default function BillingPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sellerTransactions?.map((tx: any) => (
+                  {(Array.isArray(sellerTransactions) ? sellerTransactions : []).map((tx: any) => (
                     <tr key={tx.id} className="border-b border-[rgba(167,139,250,0.10)] hover:bg-[rgba(255,255,255,0.02)]">
-                      <td className="py-3 px-4 text-[rgba(241,240,255,0.65)]">{tx.buyer_anonymized}</td>
-                      <td className="py-3 px-4 font-medium text-text">{tx.listing_title}</td>
-                      <td className="py-3 px-4 text-text">₦{tx.amount.toLocaleString()}</td>
-                      <td className="py-3 px-4 font-medium text-green-400">₦{tx.seller_amount.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-[rgba(241,240,255,0.38)]">-₦{tx.platform_fee.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-[rgba(241,240,255,0.65)]">{format(new Date(tx.created_at), 'MMM d, yyyy')}</td>
+                      <td className="py-3 px-4 text-[rgba(241,240,255,0.65)]">{tx.buyer_anonymized ?? 'Anonymous'}</td>
+                      <td className="py-3 px-4 font-medium text-text">{tx.listing_title ?? 'Unknown'}</td>
+                      <td className="py-3 px-4 text-text">₦{(tx.amount ?? 0).toLocaleString()}</td>
+                      <td className="py-3 px-4 font-medium text-green-400">₦{(tx.seller_amount ?? 0).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-[rgba(241,240,255,0.38)]">-₦{(tx.platform_fee ?? 0).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-[rgba(241,240,255,0.65)]">{tx.created_at ? format(new Date(tx.created_at), 'MMM d, yyyy') : 'Unknown'}</td>
                     </tr>
                   ))}
                 </tbody>

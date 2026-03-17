@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     allowed_origins: List[str] = [
         "http://localhost:3000",
         "https://syntho.vercel.app",
+        "https://syntho-henna.vercel.app",
     ]
 
     # ── v2 optional features (warn if missing, never block startup) ────────────

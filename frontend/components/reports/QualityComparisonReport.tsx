@@ -65,23 +65,11 @@ export function QualityComparisonReport({
   syntheticRowCount,
   originalColumnCount,
 }: QualityComparisonReportProps) {
-  if (!report?.column_stats?.columns?.length) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Quality Report</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-text-2">Quality comparison data is not available yet.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const columns = report.column_stats.columns;
-  const fidelity = report.column_stats.overall_fidelity_score ?? (report.overall_score ?? 0) / 100;
+  const columns = report?.column_stats?.columns ?? [];
+  const fidelity = report?.column_stats?.overall_fidelity_score ?? (report?.overall_score ?? 0) / 100;
 
   const csvHref = useMemo(() => {
+    if (!columns.length) return '';
     const headers = [
       'Column Name',
       'Type',
@@ -129,7 +117,7 @@ export function QualityComparisonReport({
           </div>
           <div className="rounded-btn border border-border p-3">
             <p className="text-xs text-text-3">Correlation Score</p>
-            <p className="text-xl font-semibold text-text">{formatValue(report.correlation_score)}%</p>
+            <p className="text-xl font-semibold text-text">{formatValue(report?.correlation_score)}%</p>
           </div>
           <div className="rounded-btn border border-border p-3">
             <p className="text-xs text-text-3">Rows (Original vs Synthetic)</p>

@@ -27,7 +27,7 @@ export function SellerDashboard({ data }: SellerDashboardProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-text">
-            ₦{data.total_revenue.toLocaleString()}
+            ₦{(data.total_revenue ?? 0).toLocaleString()}
           </div>
           <p className="text-xs text-[rgba(241,240,255,0.38)]">
             All time earnings
@@ -44,7 +44,7 @@ export function SellerDashboard({ data }: SellerDashboardProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-text">
-            ₦{data.revenue_this_month.toLocaleString()}
+            ₦{(data.revenue_this_month ?? 0).toLocaleString()}
           </div>
           <p className="text-xs text-[rgba(241,240,255,0.38)]">
             Revenue this month
@@ -61,7 +61,7 @@ export function SellerDashboard({ data }: SellerDashboardProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-text">
-            {data.total_downloads.toLocaleString()}
+            {(data.total_downloads ?? 0).toLocaleString()}
           </div>
           <p className="text-xs text-[rgba(241,240,255,0.38)]">
             Times purchased
@@ -82,7 +82,7 @@ export function SellerDashboard({ data }: SellerDashboardProps) {
           </div>
           <p className="text-xs text-[rgba(241,240,255,0.38)]">
             {data.best_selling_listing
-              ? `₦${data.best_selling_listing.revenue.toLocaleString()} earned`
+              ? `₦${(data.best_selling_listing.revenue ?? 0).toLocaleString()} earned`
               : 'No sales yet'}
           </p>
         </CardContent>

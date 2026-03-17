@@ -251,7 +251,7 @@ export default function MarketplacePage() {
           ) : (
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {(aiSearchResults ? data?.listings?.filter((l: any) => aiSearchResults.includes(l.id)) : data?.listings)?.map((listing: any) => (
+                {(Array.isArray(aiSearchResults) ? (data?.listings ?? []).filter((l: any) => aiSearchResults.includes(l.id)) : (data?.listings ?? [])).map((listing: any) => (
                   <ListingCard
                     key={listing.id}
                     listing={listing}
