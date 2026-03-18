@@ -54,7 +54,7 @@ async def trigger_modal_generation(
     dataset_id: str,
     method: str,
     num_rows: int,
-    file_url: str,
+    original_file_path: str,
 ):
     """Background task: call Modal ML endpoint."""
     import httpx
@@ -62,12 +62,11 @@ async def trigger_modal_generation(
     payload = {
         "synthetic_dataset_id": synthetic_id,
         "user_id": user_id,
-        "dataset_id": dataset_id,
+        "original_file_path": original_file_path,
         "method": method,
-        "num_rows": num_rows or 1000,
-        "file_url": file_url,
-        "supabase_url": settings.SUPABASE_URL,
-        "supabase_key": settings.SUPABASE_SERVICE_KEY,
+        "config": {
+            "num_rows": num_rows or 1000,
+        },
     }
     headers = {}
     if settings.MODAL_API_SECRET:
@@ -156,14 +155,6 @@ async def create_generation_job(
         }
     ).execute()
 
-    # Generate signed URL for the original file (60 min expiry)
-    try:
-        file_url = storage_service.get_signed_url(
-            "datasets", dataset["file_path"], expires_in=3600
-        )
-    except Exception:
-        file_url = ""
-
     # Increment quota counter
     try:
         current = (
@@ -189,7 +180,7 @@ async def create_generation_job(
         dataset_id,
         method,
         num_rows,
-        file_url,
+        dataset["file_path"],
     )
 
     return {"id": synthetic_id, "status": "pending"}

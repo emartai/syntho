@@ -389,22 +389,19 @@ class TestGeneration:
     ):
         self._setup_generate_mocks(mock_supabase, sample_dataset_row, test_user_id)
 
-        with patch("app.routers.generate.storage_service") as mock_storage:
-            mock_storage.get_signed_url.return_value = "https://test.supabase.co/signed/url"
-
-            resp = await async_client.post(
-                "/api/v1/generate",
-                headers=auth_headers,
-                json={
-                    "dataset_id": test_dataset_id,
-                    "method": "gaussian_copula",
-                    "num_rows": 1000,
-                },
-            )
-            assert resp.status_code == 201
-            data = resp.json()
-            assert data["status"] == "pending"
-            assert "id" in data
+        resp = await async_client.post(
+            "/api/v1/generate",
+            headers=auth_headers,
+            json={
+                "dataset_id": test_dataset_id,
+                "method": "gaussian_copula",
+                "num_rows": 1000,
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "pending"
+        assert "id" in data
 
     @pytest.mark.asyncio
     async def test_generate_missing_fields(self, async_client: AsyncClient, auth_headers):
@@ -912,15 +909,12 @@ class TestE2EFlowSimulation:
 
         mock_supabase.table = MagicMock(side_effect=gen_table_fn)
 
-        with patch("app.routers.generate.storage_service") as mock_storage:
-            mock_storage.get_signed_url.return_value = "https://test.url/signed"
-
-            resp = await async_client.post(
-                "/api/v1/generate",
-                headers=auth_headers,
-                json={"dataset_id": dataset_id, "method": "gaussian_copula", "num_rows": 500},
-            )
-            assert resp.status_code == 201, f"Generate failed: {resp.text}"
+        resp = await async_client.post(
+            "/api/v1/generate",
+            headers=auth_headers,
+            json={"dataset_id": dataset_id, "method": "gaussian_copula", "num_rows": 500},
+        )
+        assert resp.status_code == 201, f"Generate failed: {resp.text}"
 
         # -- Step 4: Check generation status --
         completed_row = {

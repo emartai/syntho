@@ -34,16 +34,18 @@ def update_job_progress(
         "updated_at": datetime.utcnow().isoformat(),
     }
 
-    if message and status == "failed":
-        # Try with error_message column first; fall back without it if column missing
-        try:
-            full_payload = {**base_payload, "error_message": message}
-            supabase.table("synthetic_datasets").update(full_payload).eq("id", synthetic_dataset_id).execute()
-            return
-        except Exception:
-            pass
+    if message:
+        base_payload["current_step"] = message
 
-    supabase.table("synthetic_datasets").update(base_payload).eq("id", synthetic_dataset_id).execute()
+    if message and status == "failed":
+        base_payload["error_message"] = message
+
+    try:
+        supabase.table("synthetic_datasets").update(base_payload).eq("id", synthetic_dataset_id).execute()
+    except Exception:
+        # Fallback without current_step/error_message if columns don't exist
+        fallback = {"progress": progress, "status": status, "updated_at": base_payload["updated_at"]}
+        supabase.table("synthetic_datasets").update(fallback).eq("id", synthetic_dataset_id).execute()
 
 
 def download_from_storage(bucket: str, path: str) -> bytes:
