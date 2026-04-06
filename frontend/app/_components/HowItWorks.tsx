@@ -1,4 +1,4 @@
-import { Upload, Cpu, ShieldCheck, Download } from 'lucide-react';
+import { Upload, Cpu, BarChart3, Download } from 'lucide-react';
 
 export function HowItWorks() {
   const steps = [
@@ -14,21 +14,21 @@ export function HowItWorks() {
       icon: Cpu,
       color: '#22d3ee',
       title: 'Choose Your Method',
-      body: 'CTGAN, TVAE, or Gaussian Copula. GPU-accelerated generation in minutes, not hours.',
+      body: 'Gaussian Copula (free, fast) or CTGAN (Pro/Growth, GPU-accelerated). Generation completes in minutes.',
     },
     {
       number: '03',
-      icon: ShieldCheck,
+      icon: BarChart3,
       color: '#a78bfa',
-      title: 'Get Your Privacy Score',
-      body: 'PII detection, singling-out risk, linkability risk. Scored 0–100. Risk level: Low / Medium / High / Critical.',
+      title: 'Get Your Trust Score',
+      body: 'A single 0–100 composite score covering privacy, statistical fidelity, and compliance. Instant PDF report included.',
     },
     {
       number: '04',
       icon: Download,
       color: '#34d399',
       title: 'Download + Comply',
-      body: 'Your synthetic dataset + a GDPR & HIPAA compliance PDF report, ready to share with regulators.',
+      body: 'Your synthetic dataset + a GDPR & HIPAA compliance PDF, ready to share with legal, regulators, and clients.',
     },
   ];
 

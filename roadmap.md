@@ -1,328 +1,183 @@
 # Syntho — Product Roadmap
-## MVP → v2 → v3 Launch Stages
+## Launch → v1 → v2 → v3 → v4
 
-> **Strategy:** Build everything in one codebase. Use feature flags to control what is live.
-> Ship MVP fast, collect real user feedback, unlock v2 and v3 as you grow.
-
----
-
-## How Feature Flags Work in This Codebase
-
-In `lib/flags.ts`:
-```typescript
-export const FLAGS = {
-  MARKETPLACE:    process.env.NEXT_PUBLIC_FLAG_MARKETPLACE    === 'true',
-  API_KEYS:       process.env.NEXT_PUBLIC_FLAG_API_KEYS       === 'true',
-  GROQ_AI:        process.env.NEXT_PUBLIC_FLAG_GROQ_AI        === 'true',
-  ADMIN_PANEL:    process.env.NEXT_PUBLIC_FLAG_ADMIN_PANEL    === 'true',
-  NOTIFICATIONS:  process.env.NEXT_PUBLIC_FLAG_NOTIFICATIONS  === 'true',
-  TEAM_ACCOUNTS:  process.env.NEXT_PUBLIC_FLAG_TEAM_ACCOUNTS  === 'true',
-}
-```
-
-In Vercel: set env vars per deployment environment.
-The code, routes, and DB tables exist at all stages — only UI visibility and API access changes.
-Routes behind flags return hard `404` via Next.js `notFound()` — not just hidden in nav.
+> **Strategy:** Ship the Launch MVP with 20 focused prompts. Collect real user feedback. Expand through v1–v4 as traction grows.
+> All future features are planned but not yet coded — the Launch codebase is clean with no dead feature-flagged code.
 
 ---
 
-## MVP — Launch Stage
-### "Generate safe synthetic data and get compliance reports"
-**Target: Ship in 5 weeks. Goal: First 100 users, validate core value prop.**
+## Launch — Months 1–2
+### "It works, it's trustworthy, developers love it"
 
-### What is LIVE in MVP
+**What ships at Launch:**
+- Google + GitHub OAuth
+- Drag-and-drop upload — CSV, JSON, Parquet, Excel up to 500MB
+- Auto schema detection — column types, row counts, sample preview
+- Two generation engines — CTGAN (Pro/Growth) and Gaussian Copula (all plans)
+- Real-time job progress via Supabase Realtime websockets
+- **Composite Trust Score — single 0–100 number** (Privacy × 0.40 + Fidelity × 0.40 + Compliance × 0.20)
+- PII detection via Microsoft Presidio
+- Column-level distribution comparison + correlation validator
+- **Downloadable GDPR + HIPAA compliance PDF — foregrounded as the headline deliverable**
+- API Keys — REST access for Pro/Growth users (moved from v2 — high retention value, low build cost)
+- In-app notifications — job complete, job failed, quota warnings
+- Freemium quota — 10 free jobs/month, 10k row cap, Gaussian Copula only on free
+- First-time onboarding flow with sample dataset
 
-| Prompt | Module | What Users Get |
-|--------|--------|----------------|
-| 1 | Scaffold | Working Next.js app, landing page, Plasma Aurora design |
-| 2 | Auth | Google + GitHub sign in, profile auto-created |
-| 3 | Dashboard | Dashboard shell, sidebar nav, dataset list |
-| 4 | Upload UI | Drag-and-drop CSV/JSON/Parquet upload |
-| 5 | FastAPI file handling | Backend receives and stores files securely |
-| 6 | Schema detection | Column types auto-detected, row/column count shown |
-| 7 | Modal.com setup | GPU-backed ML pipeline deployed and running |
-| 8 | Gaussian Copula generation | Fast, reliable synthetic generation method |
-| 9 | CTGAN + TVAE generation | Advanced generation for complex distributions |
-| 10 | Privacy scorer | Privacy score 0–100, PII detection, risk level |
-| 11 | Compliance PDF | GDPR + HIPAA compliance report, downloadable PDF |
-| 12 | Correlation validator | Statistical fidelity score |
-| 13 | Quality report | Full quality report with column-level stats |
-| 14 | Realtime progress | Live job progress bar via Supabase Realtime |
-| 24 | Error handling | Polished error states, loading skeletons, toasts |
-| 25 | Deployment | Live on Vercel + Render + Modal |
+**Pricing:**
 
-### What is HIDDEN in MVP (code exists, flag = false)
-- Marketplace (prompts 15–18) → v2
-- API Keys (prompts 19–20) → v2
-- Groq AI layer (prompt 26) → v2
-- Admin panel (prompt 21) → v2
-- Team/org accounts → v2
-- Dashboard analytics (prompt 22) → v3
-- Notifications (prompt 23) → v2
+| Plan | Price | Jobs/month | Max rows/job | Methods | API Keys |
+|------|-------|-----------|--------------|---------|----------|
+| Free | ₦0 | 10 | 10,000 | Gaussian Copula | No |
+| Pro | ₦5,000/mo | Unlimited | 500,000 | CTGAN + Gaussian Copula | Yes |
+| Growth | ₦15,000/mo | Unlimited | 5,000,000 | All methods + priority GPU | Yes |
 
-### MVP Freemium Pricing (From Day One)
+**Growth strategy:**
+- Post on Nigerian tech communities — Ingressive for Good, She Code Africa Slack, Techpoint Nigeria, Twitter/X
+- Reach out to 20 data engineers at fintechs (Flutterwave, Paystack, Kuda, Moniepoint) — free Pro for 3 months in exchange for feedback + testimonial
+- Post demo video: upload → generate → download PDF loop — LinkedIn + YouTube
+- Write one SEO article: "How to generate synthetic data for GDPR compliance in Nigeria"
 
-| Plan | Price | Jobs/month | Max rows/job | Methods | Reports |
-|------|-------|-----------|--------------|---------|---------|
-| **Free** | ₦0 | 3 jobs | 5,000 rows | Gaussian Copula only | Privacy + Quality |
-| **Pro** | ₦5,000/mo | Unlimited | 500,000 rows | All 3 methods | All reports + PDF |
-| **Growth** | ₦15,000/mo | Unlimited | 5,000,000 rows | All 3 methods | All reports + priority queue |
-
-**Implementation in MVP:**
-- Store `plan` field on `profiles` table: `'free' | 'pro' | 'growth'`
-- FastAPI: before starting generation job, check user plan vs usage this month
-- If free tier limit hit: return 402 with upgrade prompt
-- Payment for Pro/Growth: Flutterwave subscription link (no marketplace needed — just a payment page)
-- Free users see a locked badge on CTGAN/TVAE — "Upgrade to Pro to use advanced methods"
-
-### MVP Environment Variables (Vercel)
-```
-NEXT_PUBLIC_FLAG_MARKETPLACE=false
-NEXT_PUBLIC_FLAG_API_KEYS=false
-NEXT_PUBLIC_FLAG_GROQ_AI=false
-NEXT_PUBLIC_FLAG_ADMIN_PANEL=false
-NEXT_PUBLIC_FLAG_NOTIFICATIONS=false
-NEXT_PUBLIC_FLAG_TEAM_ACCOUNTS=false
-```
-
-### MVP Success Metrics (5 weeks post-launch)
-- 100 registered users
-- 30% free → Pro conversion
-- 50 synthetic datasets generated
-- 20 compliance reports downloaded
-- Average privacy score > 70
-- Zero data breaches or security incidents
+**Target:** 200 signups, 15 paying users, ₦75,000 MRR
 
 ---
 
-## v2 — Growth Stage
-### "AI-assisted generation + marketplace + developer API + team workspaces"
-**Target: 8–12 weeks after MVP. Goal: First marketplace GMV, API adoption, team revenue.**
+## v1 — Months 3–5
+### "Retention, stickiness, and first B2B contracts"
 
-### What gets UNLOCKED in v2 (flip flags to true)
+**Features added:**
+- Team accounts — invite members, shared datasets, role-based access (Admin / Editor / Viewer)
+- Team plan — ₦30,000/mo, 10 seats, shared quota
+- Dataset versioning — track multiple generations per dataset, compare versions
+- Shareable report links — send compliance PDF URL directly to a client or regulator
+- Job history dashboard — full log of all past jobs with re-run button
+- Webhook support — ping your endpoint when a job completes (dev retention)
+- Basic admin analytics — jobs run, data volume, quota usage per user
+- Email notifications — job complete, quota warning, team invite (via Resend or Supabase Edge Functions)
+- Improved onboarding — guided 3-step first job with sample dataset, value in under 2 minutes
 
-| Prompt | Module | What Users Get |
-|--------|--------|----------------|
-| 15 | Marketplace browse | Browse and buy synthetic datasets |
-| 16 | Seller side | List datasets, set price, manage listings |
-| 17 | Flutterwave checkout | Pay in NGN/GHS/KES, mobile money (MTN, Airtel, M-Pesa) |
-| 18 | Split payments | Sellers receive 80%, Syntho takes 20% automatically |
-| 19 | API key management | Create, revoke, and scope API keys |
-| 20 | Public REST API | Programmatic access: upload, generate, download |
-| 21 | Admin panel | User management, listing approval queue, platform metrics |
-| 23 | Notifications | In-app + email: job complete, purchase, sale |
-| 26 | Groq AI layer | Schema advisor, compliance explainer, listing writer, quality advisor, NL search |
-| — | Team accounts | Invite members, shared datasets, role-based access (Owner / Editor / Viewer) |
+**New pricing:**
 
-### v2 Pricing Updates
+| Plan | Price | Notes |
+|------|-------|-------|
+| Free | ₦0 | same |
+| Pro | ₦5,000/mo | same |
+| Growth | ₦15,000/mo | same |
+| Team | ₦30,000/mo | 10 seats, shared workspace |
 
-| Plan | Price | Changes vs MVP |
-|------|-------|---------------|
-| **Free** | ₦0 | + Can browse marketplace (cannot purchase) |
-| **Pro** | ₦5,000/mo | + Marketplace buying + selling + API access (500 calls/day) |
-| **Growth** | ₦15,000/mo | + Team seats (up to 3) + higher API limits (5,000 calls/day) |
-| **Team** | ₦30,000/mo | Up to 10 seats, shared workspace, admin dashboard |
+**Growth strategy:**
+- Convert the 20 beta fintechs from free Pro → paying Team accounts (personal outreach)
+- Write 3 SEO articles: "synthetic data for healthcare Nigeria," "test data generation API," "HIPAA compliant data Nigeria"
+- Launch simple affiliate program — data engineers who refer a paying customer get one free Pro month
+- Speak at one Nigerian tech event (Data Fest Africa, PyCon Nigeria)
+- Begin outreach to Nigerian healthtechs — LifeBank, Helium Health, Kangpe — compliance PDF is the sales wedge
 
-**Marketplace fee:** 20% platform cut on all sales, auto-split via Flutterwave subaccounts.
-
-### v2 New Infrastructure
-- `GROQ_API_KEY` added to Render env vars
-- Flutterwave subaccount created per seller on first listing
-- Supabase Realtime enabled for `notifications` table
-- Rate limiting active on all `/api/v1/` routes (already built in prompt 20)
-- Admin panel behind `ADMIN_PANEL` flag — only visible to `role = 'admin'` profiles
-
-### v2 Environment Variables (Vercel)
-```
-NEXT_PUBLIC_FLAG_MARKETPLACE=true
-NEXT_PUBLIC_FLAG_API_KEYS=true
-NEXT_PUBLIC_FLAG_GROQ_AI=true
-NEXT_PUBLIC_FLAG_ADMIN_PANEL=true
-NEXT_PUBLIC_FLAG_NOTIFICATIONS=true
-NEXT_PUBLIC_FLAG_TEAM_ACCOUNTS=true
-```
-
-### v2 Success Metrics
-- ₦500,000 marketplace GMV in first 30 days
-- 20 active sellers with approved listings
-- 50 API key users
-- Groq AI recommendation accepted > 60% of the time
-- 10 active team workspaces
+**Target:** 800 signups, 60 paying users, ₦400,000 MRR
 
 ---
 
-## v3 — Scale Stage
-### "Enterprise-grade platform with full observability and custom infrastructure"
-**Target: 6 months after MVP. Goal: Enterprise contracts, 99.9% SLA, custom models.**
+## v2 — Months 6–9
+### "The marketplace opens, developers build on top of Syntho"
 
-### What gets UNLOCKED in v3
+**Features added:**
+- Marketplace — buy and sell synthetic datasets, Flutterwave checkout, 80/20 revenue split
+- Marketplace cold-start — 10 seeded sellers from v1 power users, each with min 3 datasets before launch
+- Groq AI layer — schema advisor (fixes column issues before generation), compliance explainer (plain-English PDF summary), natural language dataset search
+- AI listing writer — auto-generates title, description, tags from dataset schema
+- Admin panel — user management, listing approval queue, platform metrics
+- Seller dashboard — revenue, views, downloads, payout history
+- Advanced privacy controls — per-column anonymization overrides before generation
+- Row scaling — generate datasets larger than the original (up to 10×)
+- Batch API — up to 20 generation jobs in one API call
+- Split job runners — Gaussian Copula on backend (sync, no GPU cost), Modal GPU for CTGAN only
 
-| Prompt | Module | What Users Get |
-|--------|--------|----------------|
-| 22 | Advanced analytics | Cohort analysis, churn, MRR, marketplace health dashboard |
-| 27 | Full test suite | Playwright E2E, pytest > 80% coverage, GitHub Actions CI/CD |
-| — | Custom models | Fine-tuned CTGAN on domain-specific data (healthcare, finance) |
-| — | Batch API | Async bulk generation (100+ datasets in one API call) |
-| — | Data connectors | Direct ingest from S3, Google BigQuery, PostgreSQL |
-| — | Status page | Public uptime page, incident history |
-| — | SOC 2 prep | Audit logs, data retention policies, access controls |
+**New pricing:**
+- Free / Pro / Growth / Team — same
+- Marketplace take rate: 20% platform fee on all dataset sales
 
-### v3 Pricing
+**Growth strategy:**
+- Press push — pitch Techpoint, Disrupt Africa, African Business Insider on "Africa's first synthetic data marketplace"
+- API integration tutorials for Python, Node.js, R — publish on Dev.to and Hashnode
+- Marketplace liquidity campaign — first 50 sellers get 90/10 split for 3 months
+- Partnership with Nigerian universities (University of Lagos, Covenant) for research datasets
+- Begin enterprise conversations (banks, telcos, insurance) — lead with compliance PDF + team plan
 
-| Plan | Price | Target |
-|------|-------|--------|
-| **Free** | ₦0 | Individual devs, students |
-| **Pro** | ₦5,000/mo | Freelancers, solo founders |
-| **Growth** | ₦15,000/mo | Startups, small teams |
-| **Team** | ₦30,000/mo | Mid-size companies |
-| **Enterprise** | Custom | Large orgs, SLA, invoicing, custom models, dedicated infra |
-
-### v3 Infrastructure Upgrades
-- Migrate Render free → Render paid (guaranteed uptime, no cold starts)
-- Modal.com paid plan (more GPU hours, faster queues)
-- Supabase Pro (increased DB size, connection pooling, PITR backups)
-- Add Sentry (error tracking)
-- Add PostHog (product analytics, funnel tracking)
-- Redis caching for marketplace listing queries
-
-### v3 Success Metrics
-- First enterprise contract signed
-- 99.9% uptime over 30 days
-- MRR > ₦2,000,000
-- Test coverage > 80%
-- < 2 second p95 API response time
+**Target:** 2,500 signups, 180 paying users, marketplace GMV ₦500,000/mo, MRR ₦1,200,000
 
 ---
 
-## Prompt-to-Stage Master Map
+## v3 — Months 10–16
+### "Enterprise-ready, Africa-wide, infrastructure hardened"
 
-| Prompt | Title | MVP | v2 | v3 |
-|--------|-------|:---:|:--:|:--:|
-| 1 | Scaffold | ✅ | | |
-| 2 | Auth + Supabase | ✅ | | |
-| 3 | Layout + Dashboard shell | ✅ | | |
-| 4 | Upload UI | ✅ | | |
-| 5 | FastAPI file handling | ✅ | | |
-| 6 | Schema detection | ✅ | | |
-| 7 | Modal.com setup | ✅ | | |
-| 8 | Gaussian Copula | ✅ | | |
-| 9 | CTGAN + TVAE | ✅ | | |
-| 10 | Privacy scorer | ✅ | | |
-| 11 | Compliance PDF | ✅ | | |
-| 12 | Correlation validator | ✅ | | |
-| 13 | Quality report | ✅ | | |
-| 14 | Realtime progress | ✅ | | |
-| 15 | Marketplace browse | | ✅ | |
-| 16 | Seller side | | ✅ | |
-| 17 | Flutterwave checkout | | ✅ | |
-| 18 | Split payments | | ✅ | |
-| 19 | API key management | | ✅ | |
-| 20 | Public REST API | | ✅ | |
-| 21 | Admin panel | | ✅ | |
-| 22 | Advanced analytics | | | ✅ |
-| 23 | Notifications | | ✅ | |
-| 24 | Error handling | ✅ | | |
-| 25 | Deployment | ✅ | | |
-| 26 | Groq AI layer | | ✅ | |
-| 27 | Full test suite | | | ✅ |
+**Features added:**
+- Data connectors — direct ingest from PostgreSQL, S3, BigQuery, MySQL (no manual upload for enterprise)
+- Domain-specific CTGAN models — fine-tuned for healthcare (patient records, vitals) and finance (transactions, KYC) — **competitive moat**
+- Async batch API — 100+ datasets per call, job queue, status polling, webhook callbacks
+- SOC 2 prep — full audit logs, data retention policies, access control records, incident logging
+- Public status page — uptime dashboard
+- Full test suite — Playwright E2E, pytest >80% coverage, GitHub Actions CI/CD
+- Advanced analytics — cohort analysis, MRR dashboard, marketplace health, activation funnel
+- Infrastructure upgrade — Render paid, Supabase Pro, Sentry, PostHog, Redis job queue
+- Custom compliance templates — NDPR (Nigeria Data Protection Regulation), PDPA (Ghana, Kenya)
+- Enterprise plan — custom pricing, SLA guarantee, dedicated GPU, named account manager
+
+**New pricing:**
+- Free / Pro / Growth / Team — same
+- Enterprise — ₦150,000/mo floor, custom contract
+
+**Growth strategy:**
+- Enterprise sales motion — hire or contract one B2B salesperson (banks, telcos, insurance — Nigeria, Ghana, Kenya)
+- Pursue 2 anchor enterprise contracts — a mid-size bank and a healthtech — these become case studies
+- Conference presence — AfricaCom, FinTech Summit Africa
+- "NDPR-ready synthetic data" positioning — no Africa competitor has this
+- Full developer portal with live API playground
+
+**Target:** 6,000 signups, 400 paying users, 3 enterprise contracts, MRR ₦5,000,000
 
 ---
 
-## Build Timeline
+## v4 — Months 17–24
+### "From SaaS to infrastructure layer"
 
-```
-Weeks 1–5    Prompts 1–14, 24, 25         MVP LAUNCH 🚀
-             + Freemium paywall logic
-             + Flutterwave subscription page (Pro/Growth)
+**Features added:**
+- On-premise deployment — self-hosted Docker/Kubernetes for enterprises (banks, government, telcos) — Enterprise Plus plan
+- Custom model training — enterprises fine-tune CTGAN on their own data, hosted privately
+- HIPAA BAA — formal Business Associate Agreement for US-facing healthcare clients (diaspora + global)
+- Multi-region deployment — data residency options (Nigeria, EU, US)
+- Syntho Embed — white-label SDK for other SaaS products to embed synthetic data generation (new revenue stream)
+- ISO 27001 + SOC 2 Type II certification
+- Marketplace expansion — international sellers and buyers, USD pricing option
+- Advanced model explainability — column-by-column generation reasoning (critical for regulated industries)
 
-Weeks 6–7    Bug fixes, user feedback, monitoring
+**New pricing:**
+- Free / Pro / Growth / Team — same
+- Enterprise — ₦150,000–₦500,000/mo
+- Enterprise Plus (on-prem) — annual contract, ₦3,000,000+/yr
+- Embed licensing — per-seat or revenue share
 
-Weeks 8–16   Prompts 15–21, 23, 26        v2 LAUNCH 🚀
-             + Team accounts module
-             + Admin approval workflow
+**Growth strategy:**
+- International expansion — UK/US Nigerian diaspora tech companies, East Africa (Kenya, Rwanda)
+- Partner channel — 2–3 systems integrators who sell Syntho as part of compliance packages
+- SOC 2 Type II + ISO 27001 press — newsworthy in B2B, unlocks procurement at large institutions
+- Product-led growth (free tier) feeds enterprise pipeline — individual devs champion internally
 
-Month 4–6    Prompts 22, 27 + new work     v3 LAUNCH 🚀
-             + Enterprise features
-             + Infrastructure upgrades
-```
+**Target:** 15,000 signups, 900 paying users, 8 enterprise contracts, MRR ₦15,000,000+
 
 ---
 
-## Feature Flag Implementation (Full Code)
+## Revenue Summary
 
-**`lib/flags.ts`** — central flag definition:
-```typescript
-export const FLAGS = {
-  MARKETPLACE:   process.env.NEXT_PUBLIC_FLAG_MARKETPLACE   === 'true',
-  API_KEYS:      process.env.NEXT_PUBLIC_FLAG_API_KEYS      === 'true',
-  GROQ_AI:       process.env.NEXT_PUBLIC_FLAG_GROQ_AI       === 'true',
-  ADMIN_PANEL:   process.env.NEXT_PUBLIC_FLAG_ADMIN_PANEL   === 'true',
-  NOTIFICATIONS: process.env.NEXT_PUBLIC_FLAG_NOTIFICATIONS === 'true',
-  TEAM_ACCOUNTS: process.env.NEXT_PUBLIC_FLAG_TEAM_ACCOUNTS === 'true',
-}
-```
+| Stage | Timeline | Paying Users | MRR | ARR |
+|-------|----------|-------------|-----|-----|
+| Launch | Month 1–2 | 15 | ₦75,000 | ₦900,000 |
+| v1 | Month 3–5 | 60 | ₦400,000 | ₦4,800,000 |
+| v2 | Month 6–9 | 180 + marketplace | ₦1,200,000 | ₦14,400,000 |
+| v3 | Month 10–16 | 400 + 3 enterprise | ₦5,000,000 | ₦60,000,000 |
+| v4 | Month 17–24 | 900 + 8 enterprise | ₦15,000,000 | ₦180,000,000 |
 
-**Sidebar nav** — items filtered by flag:
-```typescript
-// components/layout/Sidebar.tsx
-import { FLAGS } from '@/lib/flags'
-
-const navItems = [
-  { label: 'Dashboard',   href: '/dashboard',          show: true },
-  { label: 'Datasets',    href: '/datasets',            show: true },
-  { label: 'Marketplace', href: '/marketplace',         show: FLAGS.MARKETPLACE },
-  { label: 'API Keys',    href: '/settings/api-keys',   show: FLAGS.API_KEYS },
-  { label: 'Team',        href: '/settings/team',       show: FLAGS.TEAM_ACCOUNTS },
-  { label: 'Admin',       href: '/admin',               show: FLAGS.ADMIN_PANEL },
-].filter(item => item.show)
-```
-
-**Route protection** — hard 404 for flagged-off pages:
-```typescript
-// app/(dashboard)/marketplace/page.tsx
-import { FLAGS } from '@/lib/flags'
-import { notFound } from 'next/navigation'
-
-export default function MarketplacePage() {
-  if (!FLAGS.MARKETPLACE) notFound()
-  // ... rest of page
-}
-```
-
-**Backend route protection** — FastAPI dependency:
-```python
-# backend/app/dependencies/flags.py
-from app.config import settings
-
-def require_marketplace():
-    if not settings.FLAG_MARKETPLACE:
-        raise HTTPException(status_code=404, detail="Not found")
-
-def require_api_keys():
-    if not settings.FLAG_API_KEYS:
-        raise HTTPException(status_code=404, detail="Not found")
-
-# Usage in router:
-# @router.get("/marketplace", dependencies=[Depends(require_marketplace)])
-```
-
-**Freemium quota check** — FastAPI dependency for generation:
-```python
-# backend/app/dependencies/quota.py
-async def check_generation_quota(
-    current_user: Profile = Depends(get_current_user),
-    db = Depends(get_db)
-):
-    if current_user.plan == 'free':
-        # Count jobs this calendar month
-        count = await db.count_jobs_this_month(current_user.id)
-        if count >= 3:
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "error": "free_limit_reached",
-                    "message": "You've used all 3 free jobs this month.",
-                    "upgrade_url": "/settings/billing"
-                }
-            )
-```
+**Honest notes:**
+- Launch and v1 numbers are conservative — achievable with direct outreach execution
+- v2 jump depends on marketplace cold-start execution — that's the biggest variable
+- v3/v4 numbers require at least 2 enterprise contracts — without enterprise, drop those by 60%
+- v4 ₦15M MRR = ~₦6M enterprise + ~₦7M SMB subscriptions + ~₦2M marketplace/embed
+- **The single biggest risk is sales, not product.** Everything from v2 onward needs someone actively selling to enterprises. If that's not you, find that person by month 8.

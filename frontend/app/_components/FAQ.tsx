@@ -25,7 +25,7 @@ export function FAQ() {
     {
       question: 'How long does generation take?',
       answer:
-        'Gaussian Copula takes 1–3 minutes for most datasets. CTGAN and TVAE take 5–15 minutes depending on dataset size and complexity. All jobs run on GPU infrastructure.',
+        'Gaussian Copula takes 1–3 minutes for most datasets (CPU). CTGAN takes 5–15 minutes depending on dataset size and complexity — it runs on GPU infrastructure via Modal.com.',
     },
     {
       question: 'What is a privacy score?',
@@ -35,12 +35,12 @@ export function FAQ() {
     {
       question: 'Can I use the free plan for production?',
       answer:
-        'Yes. The free plan includes full privacy scoring and compliance reports. The 3 jobs/month limit resets on the 1st of each month.',
+        'Yes. The free plan includes full Trust Score (privacy + fidelity) and compliance PDF reports. The 10 jobs/month limit resets on the 1st of each month.',
     },
     {
-      question: 'When is the marketplace launching?',
+      question: 'What is a Trust Score?',
       answer:
-        'The marketplace — where you can buy and sell synthetic datasets — is launching in v2. Join the waitlist to be notified first.',
+        'A composite 0–100 score that combines privacy (40%), statistical fidelity (40%), and compliance (20%). 90+ is Excellent, 75–89 is Good, 60–74 is Fair, below 60 is Needs Improvement.',
     },
     {
       question: 'Is my original data safe?',

@@ -37,14 +37,14 @@ export function Features() {
                 GPU-Accelerated Generation
               </h3>
               <p className="text-white/70 leading-relaxed mb-6">
-                Three industry-standard methods. CTGAN for complex tabular data.
-                TVAE for variational generation. Gaussian Copula for fast, reliable output.
-                Powered by Modal.com T4 GPU — 100x faster than CPU.
+                Two industry-standard methods. CTGAN for complex tabular data — GPU-accelerated on Modal.com T4.
+                Gaussian Copula for fast, reliable output — runs on CPU, no GPU needed.
+                Both deliver statistically faithful synthetic data in minutes.
               </p>
 
               {/* Stats */}
               <div className="flex flex-wrap gap-3">
-                {['~3 min avg', '500k rows max', '3 methods'].map((stat) => (
+                {['~3 min avg', '500k rows max', '2 methods'].map((stat) => (
                   <div
                     key={stat}
                     className="bg-white/5 rounded-full px-3 py-1 text-xs text-white/60"

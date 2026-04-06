@@ -9,10 +9,10 @@ interface Profile {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
+  plan: 'free' | 'pro' | 'growth';
   role: 'user' | 'admin';
-  flutterwave_subaccount_id: string | null;
-  bank_account_verified: boolean;
-  api_quota: number;
+  jobs_used_this_month: number;
+  quota_reset_at: string;
   created_at: string;
 }
 

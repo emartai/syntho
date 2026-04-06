@@ -93,7 +93,7 @@ export async function deleteDataset(id: string): Promise<void> {
 
 export async function startGeneration(payload: {
   dataset_id: string
-  method: 'ctgan' | 'gaussian_copula' | 'tvae'
+  method: 'ctgan' | 'gaussian_copula'
   num_rows?: number
 }): Promise<any> {
   const { data } = await http.post('/api/v1/generate', payload)

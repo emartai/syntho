@@ -37,7 +37,8 @@ Run through ALL items before going live:
 - [ ] Modal API secret is a strong random string (32+ chars)
 - [ ] Rate limiting active and tested
 - [ ] File upload MIME type validation active
-- [ ] Privacy score >= 40 enforced on marketplace listing
+- [ ] Free tier row cap (10k) enforced server-side
+- [ ] CTGAN locked to Pro/Growth plans server-side
 
 ### Infrastructure
 - [ ] Supabase: production OAuth redirect URLs set
@@ -82,8 +83,11 @@ In Supabase SQL Editor, run migrations in order:
 supabase/migrations/001_initial_schema.sql
 supabase/migrations/002_rls_policies.sql
 supabase/migrations/003_storage_policies.sql
-supabase/migrations/004_triggers.sql
+supabase/migrations/004_freemium_quota.sql
+supabase/migrations/005_indexes.sql
 ```
+Then enable Realtime for `synthetic_datasets` and `notifications` tables (Database → Replication).
+Enable pg_cron extension (Database → Extensions) and run the cron schedule from 004.
 
 ### 5. Post-Deploy Verification
 ```bash
@@ -120,19 +124,21 @@ SUPABASE_JWT_SECRET       = your-jwt-secret
 FLUTTERWAVE_SECRET_KEY    = FLWSECK_LIVE-xxx
 FLUTTERWAVE_WEBHOOK_HASH  = your-webhook-hash
 MODAL_API_URL             = https://username--syntho-ml-run-job.modal.run
-MODAL_API_SECRET          = 64-char-random-string
-REDIS_URL                 = redis://red-xxx:6379  (Render internal URL)
-GROQ_API_KEY              = your-groq-api-key
-ENVIRONMENT               = production
+MODAL_API_SECRET          = 64-char-random-string  (openssl rand -hex 32)
+FRONTEND_URL              = https://syntho.vercel.app
+ALLOWED_ORIGINS           = https://syntho.vercel.app,https://syntho-henna.vercel.app
+FREE_JOBS_QUOTA           = 10
+FREE_ROW_CAP              = 10000
 ```
 
 ### Vercel (Frontend)
 Set in Vercel dashboard → Settings → Environment Variables:
 ```
-NEXT_PUBLIC_SUPABASE_URL          = https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY     = eyJhbGci...  (anon key, NOT service_role)
-NEXT_PUBLIC_API_URL               = https://syntho-api.onrender.com
+NEXT_PUBLIC_SUPABASE_URL           = https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY      = eyJhbGci...  (anon key, NOT service_role)
+NEXT_PUBLIC_API_URL                = https://syntho-api.onrender.com
 NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY = FLWPUBK_LIVE-xxx
+NEXT_PUBLIC_SAMPLE_DATASET_PATH    = datasets/sample/nigerian_retail_sample.csv
 ```
 
 ### Modal (modal.com/secrets → syntho-secrets)

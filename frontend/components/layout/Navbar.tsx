@@ -9,10 +9,11 @@ import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 
 const pageTitles: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/datasets': 'My Datasets',
-  '/upload': 'Upload Dataset',
-  '/settings/billing': 'Billing',
+  '/dashboard':       'Dashboard',
+  '/datasets':        'My Datasets',
+  '/upload':          'Upload Dataset',
+  '/api-keys':        'API Keys',
+  '/settings/billing':'Billing',
 };
 
 export function Navbar() {

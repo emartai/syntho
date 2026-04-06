@@ -66,7 +66,7 @@ def verify_api_key(raw_key: str, stored_hash: str) -> bool:
 ### File Upload Security
 - Validate file type by MIME type AND magic bytes — never trust the file extension alone
 - Reject files that do not match expected types (CSV, JSON, Parquet, XLSX)
-- Max file size enforced at both frontend (client-side) and backend (server-side): 100MB
+- Max file size enforced at both frontend (client-side) and backend (server-side): Free=50MB, Pro/Growth=500MB
 - Scan file names: strip path separators, reject null bytes, normalize unicode
 - Store files with a UUID-based path — never use the original filename as the storage path
 
@@ -124,13 +124,12 @@ supabase.rpc(f"SELECT * FROM datasets WHERE user_id = '{user_id}'")
 | Flutterwave Public Key | ✅ NEXT_PUBLIC | ❌ | ❌ |
 | Flutterwave Secret Key | ❌ NEVER | ✅ | ❌ |
 | Modal API Secret | ❌ NEVER | ✅ | ✅ |
-| Redis URL | ❌ NEVER | ✅ | ❌ |
 
 ### Secret Rotation Plan
-- Rotate Supabase JWT secret: update in backend `.env` + redeploy
+- Rotate Supabase JWT secret: update in backend `.env` + redeploy Render
 - Rotate Flutterwave keys: update in Render env vars + redeploy
-- Rotate Modal API secret: update in both backend `.env` AND Modal secret store
-- API keys (user-facing): users can revoke and regenerate at any time
+- Rotate Modal API secret: update in both Render env AND Modal secret store (syntho-secrets)
+- API keys (user-facing sk_live_*): users can revoke and regenerate at any time from /api-keys page
 
 ---
 
@@ -141,14 +140,13 @@ supabase.rpc(f"SELECT * FROM datasets WHERE user_id = '{user_id}'")
 |----------|-------|--------|
 | POST /api/v1/datasets (upload) | 20 req | per hour per user |
 | POST /api/v1/generate | 10 req | per hour per user |
-| POST /api/v1/purchases/verify | 30 req | per hour per user |
-| GET /api/v1/marketplace | 120 req | per minute per IP |
+| POST /api/v1/billing/upgrade | 10 req | per hour per user |
 | All external API (sk_live_* keys) | 60 req | per minute per key |
 | All external API (sk_live_* keys) | 1000 req | per day per key |
 | POST /auth/* (login attempts) | 10 req | per 15 min per IP |
 
 ### Implementation
-- Use Redis sliding window counter for all rate limits
+- Use in-memory sliding window counter (no Redis dependency for Launch)
 - Return standard headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
 - Return 429 with JSON body: `{"error": "Rate limit exceeded", "retry_after": seconds}`
 - Log repeated rate limit violations — could indicate abuse or attack
@@ -300,26 +298,11 @@ async def run_job(request: Request):
 - Original files are deleted from Supabase Storage when the user deletes the dataset
 - Synthetic files are what get shared/sold — never the originals
 
-### Privacy Score Enforcement
-- Datasets with privacy_score < 40 (critical risk) MUST NOT be listable on marketplace
-- Enforce this check server-side in the listing creation endpoint — never rely on frontend
-- Compliance report must show PASSED before a dataset can be listed
-
-```python
-# backend/app/routers/marketplace.py
-# ALWAYS enforce minimum privacy score before allowing listing
-privacy = supabase.table("privacy_scores").select("overall_score, risk_level") \
-    .eq("synthetic_dataset_id", synthetic_dataset_id).single().data
-
-if privacy["overall_score"] < 40 or privacy["risk_level"] == "critical":
-    raise HTTPException(400, "Dataset privacy score too low to list on marketplace")
-```
-
 ### GDPR Compliance for Syntho Itself
-- Users can request deletion of their account + all data (implement DELETE /api/v1/account endpoint)
-- Deleting a user cascades to: datasets, synthetic_datasets, api_keys, purchases (buyer side), marketplace_listings
-- Seller listings that have been purchased must be anonymized (seller_id → NULL), not deleted
+- Users can request deletion of their account + all data (DELETE /api/v1/account endpoint)
+- Deleting a user cascades to: datasets, synthetic_datasets, api_keys, notifications (all via ON DELETE CASCADE in schema)
 - Store only the minimum data needed — do not collect unnecessary user info
+- Original uploaded datasets are deleted from storage when user deletes the dataset record
 
 ---
 
@@ -371,35 +354,39 @@ Before adding any new dependency:
 ## ✅ Security Checklist (Complete Before Launch)
 
 ### Backend
-- [ ] All routes require authentication (except /health, /webhooks)
+- [ ] All routes require authentication (except /health, /api/webhooks/*)
 - [ ] RLS enabled on all Supabase tables
-- [ ] File upload validates MIME type + magic bytes
-- [ ] Rate limiting active on all endpoints
+- [ ] File upload validates MIME type + magic bytes (python-magic)
+- [ ] Rate limiting active on all /api/v1/ routes
 - [ ] CORS locked to production Vercel URL only
 - [ ] Flutterwave webhook signature verified on every event
-- [ ] Modal endpoint validates X-API-Secret
-- [ ] No secrets in source code or git history
-- [ ] Error responses never expose stack traces
+- [ ] Modal endpoint validates X-API-Secret header
+- [ ] No secrets in source code or git history (`git log --all -p | grep -i "secret\|key\|password"`)
+- [ ] Error responses never expose stack traces or raw exception messages
+- [ ] Free tier row cap (10k) enforced server-side before job starts
+- [ ] CTGAN locked to Pro/Growth plans server-side
 
 ### Frontend
 - [ ] No service role key or secret keys in any frontend code
-- [ ] Security headers set in vercel.json
+- [ ] No NEXT_PUBLIC_ variables contain secrets
+- [ ] Security headers set in vercel.json (CSP, HSTS, X-Frame-Options, nosniff)
 - [ ] Signed URLs used for all file downloads (never permanent URLs)
-- [ ] Auth token sent in Authorization header (not URL params or cookies without Secure flag)
+- [ ] Auth token sent in Authorization header only
 
 ### Database
 - [ ] RLS policies tested: user A cannot access user B's data
+- [ ] trust_scores RLS verified (users only see their own)
 - [ ] Admin role verified server-side (not from frontend claim)
 - [ ] Cascade deletes work correctly (test account deletion)
 - [ ] Storage bucket policies block cross-user access
 
-### Payments
-- [ ] Purchase verification calls Flutterwave API — not just frontend callback
-- [ ] Webhook signature verified before processing
-- [ ] Download access checked server-side before every signed URL generation
-- [ ] Privacy score >= 40 enforced before marketplace listing
+### Payments (Subscription via Flutterwave)
+- [ ] Upgrade verification calls Flutterwave API — not just frontend callback
+- [ ] Webhook signature verified before processing any plan upgrade
+- [ ] Plan change only happens after server-side payment verification
 
-### Marketplace
-- [ ] Listings only show schema preview — never raw data to non-buyers
-- [ ] Critical privacy score datasets blocked from listing
-- [ ] Compliance report PASSED required before listing
+### API Keys
+- [ ] API keys stored as SHA-256 hash only — never raw
+- [ ] Full key shown to user exactly once on creation — not stored in plain text
+- [ ] Free plan cannot create API keys (enforced server-side)
+- [ ] Key scope checked on every API key-authenticated request

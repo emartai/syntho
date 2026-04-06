@@ -97,17 +97,29 @@ After Prompt 1, create `frontend/components/logo/DataHelix.tsx` using the SVG co
    | `synthetic` | ❌ Private | Generated synthetic files |
    | `reports` | ❌ Private | Compliance PDFs |
 
-### Step 6: Run Database Schema
+### Step 6: Run Database Migrations
 1. Go to **SQL Editor → New Query**
-2. Copy the entire SQL from the **Supabase Database Schema** section in `context.md`
-3. Click **Run** — all tables will be created
-4. Verify in **Table Editor** that you see all 9 tables
+2. Run each migration file in order (copy SQL from each file):
+   - `supabase/migrations/001_initial_schema.sql`
+   - `supabase/migrations/002_rls_policies.sql`
+   - `supabase/migrations/003_storage_policies.sql`
+   - `supabase/migrations/004_freemium_quota.sql`
+   - `supabase/migrations/005_indexes.sql`
+3. Verify in **Table Editor** that you see: profiles, datasets, synthetic_datasets, trust_scores, privacy_scores, quality_reports, compliance_reports, api_keys, notifications, job_logs
+
+### Step 6b: Enable pg_cron
+1. Go to **Database → Extensions**
+2. Enable **pg_cron**
+3. Then in SQL Editor run:
+   ```sql
+   SELECT cron.schedule('reset-monthly-quotas', '0 0 1 * *', 'SELECT reset_monthly_quotas()');
+   ```
 
 ### Step 7: Enable Realtime
-1. Go to **Database → Replication**
-2. Find and enable these tables for Realtime:
-   - `synthetic_datasets`
-   - `notifications`
+1. Go to **Database → Replication → Supabase Realtime**
+2. Enable these tables:
+   - `synthetic_datasets` — for live job progress in `useJobProgress`
+   - `notifications` — for in-app notification alerts in `useNotifications`
 
 ### Step 8: Set Redirect URLs
 1. Go to **Authentication → URL Configuration**
@@ -247,27 +259,24 @@ Use these test card details when testing:
    - **Plan:** Free
 
 ### Step 3: Add Environment Variables
-In Render dashboard → **Environment**, add all variables from your backend `.env`:
+In Render dashboard → **Environment**, add:
 
 | Variable | Value |
 |----------|-------|
-| SUPABASE_URL | from Supabase |
-| SUPABASE_SERVICE_KEY | from Supabase |
-| SUPABASE_JWT_SECRET | from Supabase |
+| SUPABASE_URL | from Supabase → Settings → API |
+| SUPABASE_SERVICE_KEY | from Supabase (service_role key) |
+| SUPABASE_JWT_SECRET | from Supabase → Settings → JWT |
 | FLUTTERWAVE_SECRET_KEY | from Flutterwave |
 | FLUTTERWAVE_WEBHOOK_HASH | from Flutterwave |
-| COLAB_NGROK_URL | from running Colab notebook |
-| REDIS_URL | from Render Redis (see below) |
+| MODAL_API_URL | from modal deploy output |
+| MODAL_API_SECRET | random 32-char string (`openssl rand -hex 32`) |
+| FRONTEND_URL | your Vercel URL |
+| FREE_JOBS_QUOTA | 10 |
+| FREE_ROW_CAP | 10000 |
 
-### Step 4: Create Redis Instance
-1. Click **"New" → Redis**
-2. Name: syntho-redis
-3. Plan: Free (25MB — sufficient for MVP)
-4. Copy the **Internal Redis URL** → `REDIS_URL`
-
-### Step 5: Get Your Backend URL
+### Step 4: Get Your Backend URL
 After deployment, Render gives you a URL like: `https://syntho-api.onrender.com`
-- Copy this → `NEXT_PUBLIC_API_URL` in your frontend `.env.local`
+- Copy this → `NEXT_PUBLIC_API_URL` in your frontend Vercel env vars
 
 ---
 
@@ -305,10 +314,11 @@ In Vercel → **Settings → Environment Variables**, add:
 
 | Variable | Value |
 |----------|-------|
-| NEXT_PUBLIC_SUPABASE_URL | from Supabase |
-| NEXT_PUBLIC_SUPABASE_ANON_KEY | from Supabase |
-| NEXT_PUBLIC_API_URL | your Render URL |
+| NEXT_PUBLIC_SUPABASE_URL | from Supabase → Settings → API |
+| NEXT_PUBLIC_SUPABASE_ANON_KEY | from Supabase (anon key only) |
+| NEXT_PUBLIC_API_URL | your Render backend URL |
 | NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY | from Flutterwave |
+| NEXT_PUBLIC_SAMPLE_DATASET_PATH | datasets/sample/nigerian_retail_sample.csv |
 
 ### Step 4: Update OAuth Redirect URLs
 After Vercel gives you a URL (e.g., `https://syntho.vercel.app`):
@@ -359,20 +369,23 @@ For local development, set `NEXT_PUBLIC_API_URL=http://localhost:8000` in fronte
 Before running Prompt 1, confirm you have all of these:
 
 ### Frontend (.env.local)
-- [ ] `NEXT_PUBLIC_SUPABASE_URL` — Get from Supabase Dashboard → Settings → API
-- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Get from Supabase Dashboard → Settings → API
+- [ ] `NEXT_PUBLIC_SUPABASE_URL` — Supabase Dashboard → Settings → API
+- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase Dashboard → Settings → API (anon key)
 - [ ] `NEXT_PUBLIC_API_URL` — Your Render backend URL (e.g., https://syntho-api.onrender.com)
-- [ ] `NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY` — Get from Flutterwave Dashboard → Settings → API Keys
-- [ ] `NEXT_PUBLIC_FLAG_MARKETPLACE=false` — Must be false for MVP
-- [ ] `NEXT_PUBLIC_FLAG_API_KEYS=false` — Must be false for MVP
-- [ ] `NEXT_PUBLIC_FLAG_GROQ_AI=false` — Must be false for MVP
-- [ ] `NEXT_PUBLIC_FLAG_ADMIN_PANEL=false` — Must be false for MVP
-- [ ] `NEXT_PUBLIC_FLAG_NOTIFICATIONS=false` — Must be false for MVP
-- [ ] `NEXT_PUBLIC_FLAG_TEAM_ACCOUNTS=false` — Must be false for MVP
+- [ ] `NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY` — Flutterwave Dashboard → Settings → API Keys
+- [ ] `NEXT_PUBLIC_SAMPLE_DATASET_PATH` — `datasets/sample/nigerian_retail_sample.csv`
 
 ### Backend (.env)
-- [ ] `SUPABASE_URL` — Get from Supabase Dashboard → Settings → API
-- [ ] `SUPABASE_SERVICE_KEY` — Get from Supabase Dashboard
+- [ ] `SUPABASE_URL`
+- [ ] `SUPABASE_SERVICE_KEY` — service_role key (never anon)
+- [ ] `SUPABASE_JWT_SECRET` — Supabase → Settings → JWT Settings
+- [ ] `MODAL_API_URL` — from `modal deploy` output
+- [ ] `MODAL_API_SECRET` — match what you put in Modal syntho-secrets
+- [ ] `FRONTEND_URL` — your Vercel URL
+- [ ] `FLUTTERWAVE_SECRET_KEY`
+- [ ] `FLUTTERWAVE_WEBHOOK_HASH`
+- [ ] `FREE_JOBS_QUOTA=10`
+- [ ] `FREE_ROW_CAP=10000`
 
 ### Modal ML (modal.com/secrets → syntho-secrets)
 - [ ] `SUPABASE_URL`
@@ -383,145 +396,87 @@ Before running Prompt 1, confirm you have all of these:
 
 ## 9. Recommended Build Order
 
-Follow this exact order for the smoothest experience:
+Follow this exact order. Each prompt builds on the previous.
 
 ```
-Week 1: Foundation
+Week 1: Foundation (Prompts 1–6)
   Day 1-2: Complete all setup steps in this guide
-  Day 3:   Prompt 1 (Scaffold) + Prompt 2 (Auth)
-  Day 4:   Prompt 3 (Layout) + Prompt 4 (Upload UI)
-  Day 5:   Prompt 5 (FastAPI) + Prompt 6 (Schema Detection)
-  Test: Can users sign in, upload a file, and see schema?
+  Day 3:   Prompt 1 (Scaffold + Design System) + Prompt 2 (Supabase + Auth)
+  Day 4:   Prompt 3 (Layout + Dashboard Shell) + Prompt 4 (Upload UI + Dropzone)
+  Day 5:   Prompt 5 (FastAPI Backend + Quota) + Prompt 6 (Schema Detection)
+  Checkpoint: Can users sign in, upload a file, and see schema? ✓
 
-Week 2: ML Pipeline
-  Day 1:   Prompt 7 (Modal.com Setup) — deploy ML service, get permanent URL
-  Day 2:   Prompt 8 (SDV Generation) — test end-to-end with statistical mimicry
-  Day 3:   Prompt 9 (CTGAN Generation) — GPU-accelerated GAN generation
-  Day 4:   Prompt 14 (Realtime Progress)
-  Day 5:   Full pipeline test: upload → generate → see results
-  Test: Can users generate synthetic data end to end without you touching anything?
+Week 2: ML Pipeline (Prompts 7–9 + 14)
+  Day 1:   Prompt 7 (Modal.com Setup) — deploy ML service, get permanent URL → add to Render env
+  Day 2:   Prompt 8 (Gaussian Copula Generator) — test free-tier generation end-to-end
+  Day 3:   Prompt 9 (CTGAN Generator) — GPU-accelerated generation for Pro plan
+  Day 4:   Prompt 14 (Real-Time Job Progress) — Supabase Realtime + progress UI
+  Day 5:   Full pipeline test: upload → generate → see results live
+  Checkpoint: Can users generate synthetic data without you touching anything? ✓
 
-Week 3: Reports + Scores
-  Day 1:   Prompt 10 (Privacy Scorer)
-  Day 2:   Prompt 11 (Compliance PDF)
-  Day 3:   Prompt 12 (Correlation Validator)
-  Day 4:   Prompt 13 (Quality Report)
-  Day 5:   Prompt 21 (Dashboard)
-  Test: Are all reports generating and displaying correctly?
+Week 3: Scores + Reports (Prompts 10–13)
+  Day 1:   Prompt 10 (Privacy Scorer — Presidio)
+  Day 2:   Prompt 11 (Compliance PDF — headline feature)
+  Day 3:   Prompt 12 (Quality Report + Correlation Validator)
+  Day 4:   Prompt 13 (Composite Trust Score UI — single page, no tabs)
+  Day 5:   Full end-to-end test: upload → generate → download PDF
+  Checkpoint: Is the compliance PDF generating and downloadable? ✓
 
-Week 4: Marketplace + API
-  Day 1:   Prompt 15 (Marketplace Browse)
-  Day 2:   Prompt 16 (Seller Side)
-  Day 3:   Prompt 17 (Flutterwave Checkout)
-  Day 4:   Prompt 18 (Split Payments)
-  Day 5:   Prompt 19 + 20 (API Keys + REST API)
-  Test: Can users buy and sell datasets?
+Week 4: Monetisation + API (Prompts 15–17)
+  Day 1:   Prompt 15 (Freemium Quota + Billing Page + Flutterwave upgrade)
+  Day 2:   Prompt 16 (API Keys — Pro/Growth)
+  Day 3:   Prompt 17 (In-App Notifications)
+  Day 4-5: Prompts 18–19 (Error Handling + Dataset Pages)
+  Checkpoint: Can free users upgrade? Can Pro users generate API keys? ✓
 
-Week 5: Polish + Launch
-  Day 1:   Prompt 22 (Admin Panel)
-  Day 2:   Prompt 23 (Notifications)
-  Day 3:   Prompt 24 (Error Handling)
-  Day 4-5: Prompt 25 (Deployment)
-  Launch! 🚀
+Week 5: Polish + Launch (Prompt 20)
+  Day 1-2: Prompt 20 (Deployment + Production Config)
+  Day 3:   Run all security checklist items from security.md
+  Day 4:   Smoke test entire user journey on production
+  Day 5:   Upload sample dataset, verify onboarding flow
+  Launch!
 ```
 
 ---
 
-## 10. Running the Production Readiness Audit
+## 10. Pre-Launch Verification
 
-After completing all setup steps, run the production readiness audit to verify everything is configured correctly.
-
-### Quick Audit Check
+Run these commands before going live:
 
 ```bash
-# From project root
-python run_production_audit.py
-```
-
-This automated script checks:
-- ✅ All required environment variables present
-- ✅ All required files exist
-- ✅ Feature flags set correctly for MVP
-- ⚠️  Identifies what needs manual testing
-
-### Expected Output
-
-If setup is complete, you should see:
-```
-ENVIRONMENT................... PASS
-SUPABASE SCHEMA............... MANUAL CHECK REQUIRED
-BACKEND HEALTH................ MANUAL CHECK REQUIRED
-FRONTEND BUILD................ MANUAL CHECK REQUIRED
-...
-```
-
-If environment variables are missing:
-```
-ENVIRONMENT................... BLOCKED
-⚠️  MISSING: NEXT_PUBLIC_API_URL — Backend API URL
-⚠️  MISSING: REDIS_URL — Redis connection URL
-...
-```
-
-### Full Testing Guide
-
-For comprehensive testing procedures, see:
-- **PRODUCTION_READINESS_REPORT.md** - Detailed test procedures for all 9 phases
-- **TEST_EXECUTION_GUIDE.md** - Quick reference commands for each test
-- **AUDIT_SUMMARY.md** - Executive summary and quick status
-
-### Manual Testing Phases
-
-After environment setup passes, complete these manual tests:
-
-1. **Phase 2: Supabase Schema** (15 min)
-   - Verify tables, RLS, storage, OAuth providers
-
-2. **Phase 3: Backend Health** (20 min)
-   - Start backend, test endpoints, verify CORS
-
-3. **Phase 4: Frontend Build** (15 min)
-   - Build, TypeScript check, lint, feature flags
-
-4. **Phase 5: Authentication** (30 min)
-   - Test OAuth login, profile creation, logout
-
-5. **Phase 6: Core User Journey** (60 min)
-   - Upload, generate, reports, download
-
-6. **Phase 7: Security Audit** (45 min)
-   - RLS, JWT, file validation, SQL injection
-
-7. **Phase 8: Landing Page** (20 min)
-   - UI/UX verification, responsive design
-
-8. **Phase 9: Performance** (20 min)
-   - API response times, bundle sizes
-
-**Total Testing Time:** ~4 hours
-
-### Pre-Launch Checklist
-
-Before deploying to production:
-
-```bash
-# 1. Environment check
-python run_production_audit.py
-
-# 2. Backend tests
-cd backend && pytest tests/ -v
-
-# 3. Frontend build
+# Frontend — must pass with zero errors
 cd frontend && npm run build
-
-# 4. TypeScript check
 cd frontend && npx tsc --noEmit
-
-# 5. Lint check
 cd frontend && npx next lint
+
+# Backend — start locally and test /health
+cd backend && .venv/Scripts/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+curl http://localhost:8000/health
+# Expected: {"status":"ok","version":"1.0.0"}
+
+# Test full user journey manually (5 steps):
+# 1. Sign in with Google or GitHub
+# 2. Upload the sample dataset (or any small CSV)
+# 3. Click Generate → Gaussian Copula → Generate Now
+# 4. Watch real-time progress bar complete
+# 5. Download the compliance PDF
 ```
 
-All checks must pass before production deployment.
+### Manual Verification Checklist
+
+- [ ] Google OAuth login works → profile auto-created in profiles table
+- [ ] GitHub OAuth login works
+- [ ] Upload a CSV → schema detected and displayed correctly
+- [ ] Free user: CTGAN option is locked with upgrade prompt
+- [ ] Generate (Gaussian Copula) → progress updates in real-time
+- [ ] Trust score appears on result page (composite 0–100 number)
+- [ ] Compliance PDF downloads successfully
+- [ ] Notification appears: "Your synthetic dataset is ready"
+- [ ] Free user at 10 jobs → quota_exhausted notification + upgrade prompt
+- [ ] Pro user: CTGAN available, no row cap warning
+- [ ] API key creation works for Pro user
+- [ ] API key auth works: `Bearer sk_live_...` accepted on generate endpoint
+- [ ] User A cannot access User B's datasets (RLS test)
 
 ---
 

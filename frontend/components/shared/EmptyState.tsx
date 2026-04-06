@@ -1,9 +1,10 @@
-import { Plus, Search, FileText, Key, ShoppingCart } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Search, FileText, Key } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface EmptyStateProps {
-  icon?: 'dataset' | 'search' | 'key' | 'purchase' | 'custom';
+  icon?: 'dataset' | 'search' | 'key' | 'custom';
   customIcon?: React.ReactNode;
   title: string;
   description?: string;
@@ -15,10 +16,9 @@ interface EmptyStateProps {
 
 const iconMap = {
   dataset: FileText,
-  search: Search,
-  key: Key,
-  purchase: ShoppingCart,
-  custom: null,
+  search:  Search,
+  key:     Key,
+  custom:  null,
 };
 
 export function EmptyState({
@@ -36,12 +36,10 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center py-12 px-6 text-center rounded-[14px] border border-[rgba(167,139,250,0.10)]',
+        'flex flex-col items-center justify-center py-14 px-6 text-center rounded-[14px] border border-[rgba(167,139,250,0.10)]',
         className
       )}
-      style={{
-        background: 'rgba(255,255,255,0.02)',
-      }}
+      style={{ background: 'rgba(255,255,255,0.02)' }}
     >
       <div
         className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
@@ -58,31 +56,30 @@ export function EmptyState({
       </h3>
 
       {description && (
-        <p className="text-sm text-[rgba(241,240,255,0.65)] max-w-sm mb-6">
+        <p className="text-sm text-[rgba(241,240,255,0.55)] max-w-sm mb-6 leading-relaxed">
           {description}
         </p>
       )}
 
-      {(actionLabel && onAction) && (
+      {actionLabel && onAction && (
         <Button onClick={onAction} className="flex items-center gap-2">
           <Plus className="w-4 h-4" />
           {actionLabel}
         </Button>
       )}
 
-      {actionLabel && href && (
-        <a href={href}>
+      {actionLabel && href && !onAction && (
+        <Link href={href}>
           <Button className="flex items-center gap-2">
             <Plus className="w-4 h-4" />
             {actionLabel}
           </Button>
-        </a>
+        </Link>
       )}
     </div>
   );
 }
 
-// Pre-configured empty states for common use cases
 export function EmptyDatasets({ onUpload }: { onUpload?: () => void }) {
   return (
     <EmptyState
@@ -91,18 +88,7 @@ export function EmptyDatasets({ onUpload }: { onUpload?: () => void }) {
       description="Upload your first dataset to start generating synthetic data"
       actionLabel="Upload Dataset"
       onAction={onUpload}
-    />
-  );
-}
-
-export function EmptyMarketplaceResults({ onClearFilters }: { onClearFilters?: () => void }) {
-  return (
-    <EmptyState
-      icon="search"
-      title="No results found"
-      description="Try adjusting your filters or search terms"
-      actionLabel="Clear Filters"
-      onAction={onClearFilters}
+      href={onUpload ? undefined : '/upload'}
     />
   );
 }
@@ -112,21 +98,21 @@ export function EmptyApiKeys({ onCreate }: { onCreate?: () => void }) {
     <EmptyState
       icon="key"
       title="No API keys yet"
-      description="Create an API key to integrate Syntho into your applications"
+      description="Create an API key to integrate Syntho into your ML pipelines via sk_live_ keys"
       actionLabel="Create API Key"
       onAction={onCreate}
     />
   );
 }
 
-export function EmptyPurchases() {
+export function EmptySearchResults({ onClearFilters }: { onClearFilters?: () => void }) {
   return (
     <EmptyState
-      icon="purchase"
-      title="No purchases yet"
-      description="Browse the marketplace to find synthetic datasets"
-      actionLabel="Browse Marketplace"
-      href="/marketplace"
+      icon="search"
+      title="No results found"
+      description="Try adjusting your search or filters"
+      actionLabel="Clear Filters"
+      onAction={onClearFilters}
     />
   );
 }

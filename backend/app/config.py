@@ -11,10 +11,15 @@ class Settings(BaseSettings):
     FRONTEND_URL: str
     ALLOWED_ORIGINS: str = ""
 
-    # v2 — optional, no validation
-    GROQ_API_KEY: str = ""
+    # Freemium quota
+    FREE_JOBS_QUOTA: int = 10
+    FREE_ROW_CAP: int = 10000
+    PRO_ROW_CAP: int = 500000
+    GROWTH_ROW_CAP: int = 5000000
+
+    # Optional services
     FLUTTERWAVE_SECRET_KEY: str = ""
-    REDIS_URL: str = ""
+    FLUTTERWAVE_WEBHOOK_HASH: str = ""
 
     @property
     def allowed_origins_list(self) -> List[str]:

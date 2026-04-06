@@ -230,10 +230,13 @@ export function AuroraBadge({ children, variant = 'primary' }: { children: React
 
 ### Landing Page
 - Full-screen hero, aurora active, navbar with blur bg
-- Headline: 3-line Clash Display 64px — "Generate" (text-2) / "Synthetic Data" (gradient text) / "That Feels Real" (text)
-- Two CTA buttons: gradient "Start Building Free" + ghost "View Marketplace →"
-- 4 feature GlassCards in 2x2 grid, hover glow
-- Stats bar: bg-elevated, 3 large numbers
+- Headline: Clash Display 56–64px — "Generate Safe Synthetic Data. Stay Compliant." (gradient text)
+- Sub-headline: Satoshi 18px, text-2 — one sentence on what Syntho does
+- Two CTA buttons: gradient "Start Free" → /login + ghost "See How It Works" → #how-it-works
+- 6 feature GlassCards in 2x3 grid, hover glow
+- HowItWorks: 5-step horizontal flow with connecting line
+- Pricing: 3 plan cards — Free / Pro / Growth (Free card muted, Pro card has primary glow border)
+- SocialProofBar: muted logos strip — "Trusted by teams at [fintech names]"
 
 ### Auth Pages (Login/Signup)
 - Split: left aurora hero + right login card
@@ -261,16 +264,13 @@ export function AuroraBadge({ children, variant = 'primary' }: { children: React
 - JobProgress: vertical step list, animated pulse on active step
 - Progress bar: shimmer gradient
 
-### Dataset Detail (Tabs)
-- Overview | Privacy Score | Quality Report | Compliance | Download
-- Privacy gauge: RadialBarChart, score center, color by risk
-- Quality: DistributionChart per column (primary=original, accent=synthetic)
-- Compliance: pass/fail banner + checklist
-
-### Marketplace
-- 3-col grid of ListingCards (GlassCard + hover)
-- Price: Clash Display, primary color
-- Filter sidebar: glass style
+### Dataset Result Page (single scrollable page — NO tabs)
+- SECTION 1 — Trust Score Hero: large RadialBarChart gauge (200px), composite score in center, label below, three sub-score pills (Privacy · Fidelity · Compliance), primary CTA "Download Compliance PDF" button, secondary "Download Synthetic Data (.csv)"
+- SECTION 2 — What This Means: plain-English 2–3 sentence summary, GDPR Passed/Failed badge, HIPAA Passed/Failed badge, PII Risk level badge
+- SECTION 3 — Privacy Breakdown: risk level badge, list of detected PII columns with entity type badges
+- SECTION 4 — Fidelity Breakdown: CorrelationHeatmap side-by-side, DistributionChart per column (primary=original, accent=synthetic), stats table
+- SECTION 5 — Generation Details: method, rows, time, back-link to original dataset
+- All on one page — user scrolls down to see more detail. The PDF download is always visible.
 
 ### API Keys
 - Table of keys with prefix, scopes, usage

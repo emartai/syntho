@@ -28,19 +28,18 @@ async def check_quota(user_id: str, supabase):
     if not profile:
         profile = {
             "plan": "free",
-            "jobs_quota": 3,
             "jobs_used_this_month": 0,
         }
 
     plan = profile.get("plan", "free")
     jobs_used = profile.get("jobs_used_this_month", 0)
 
-    if plan == "free" and jobs_used >= 3:
+    if plan == "free" and jobs_used >= settings.FREE_JOBS_QUOTA:
         raise HTTPException(
             status_code=402,
             detail={
                 "error": "quota_exceeded",
-                "message": "Free plan limit reached. Upgrade to Pro.",
+                "message": f"You've used all {settings.FREE_JOBS_QUOTA} free jobs this month. Upgrade to Pro for unlimited jobs.",
                 "upgrade_url": "/settings/billing",
             },
         )

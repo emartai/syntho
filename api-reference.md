@@ -10,10 +10,9 @@ All API requests require an API key in the Authorization header:
 Authorization: Bearer sk_live_your_api_key_here
 ```
 
-API keys are created in the Syntho dashboard under **API Keys**. Keys have scopes:
+API keys are created in the Syntho dashboard under **API Keys** (Pro/Growth plans only). Keys have scopes:
 - `read` — list datasets, fetch status, download results
 - `generate` — trigger synthetic data generation
-- `marketplace` — browse and download purchased datasets
 
 ---
 
@@ -61,9 +60,11 @@ https://your-render-app.onrender.com/api/v1/ext
 | Limit | Value |
 |-------|-------|
 | Requests per minute | 60 |
-| Requests per day | 1000 |
-| Max file size | 100MB |
-| Max concurrent jobs | 3 |
+| Requests per day | 1,000 |
+| Max file size | 50MB (Free) / 500MB (Pro/Growth) |
+| Free plan: max rows per job | 10,000 |
+| Free plan: max jobs per month | 10 |
+| Free plan: methods | gaussian_copula only |
 
 Rate limit headers returned on every response:
 ```
@@ -90,7 +91,7 @@ Scope: generate
 Form fields:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| file | File | Yes | CSV, JSON, Parquet, or XLSX. Max 100MB |
+| file | File | Yes | CSV, JSON, Parquet, or XLSX. Free: 50MB max. Pro/Growth: 500MB max |
 | name | string | Yes | Display name for the dataset |
 | description | string | No | Optional description |
 
@@ -181,8 +182,8 @@ Body:
 | Field | Type | Required | Values |
 |-------|------|----------|--------|
 | dataset_id | string | Yes | UUID of uploaded dataset |
-| method | string | Yes | `gaussian_copula` or `ctgan` |
-| config.num_rows | int | No | Default: same as original. Max: 1,000,000 |
+| method | string | Yes | `gaussian_copula` (all plans) or `ctgan` (Pro/Growth only) |
+| config.num_rows | int | No | Default: same as original. Free plan max: 10,000 |
 | config.epochs | int | No (CTGAN only) | 100–500, default 300 |
 | config.batch_size | int | No (CTGAN only) | Default 500 |
 
@@ -255,11 +256,18 @@ Returns all reports once status is `completed`:
   "data": {
     "synthetic_dataset_id": "uuid",
     "status": "completed",
+    "trust_score": {
+      "composite_score": 88.4,
+      "privacy_score": 91.2,
+      "fidelity_score": 89.6,
+      "compliance_score": 80.0,
+      "label": "Good"
+    },
     "privacy_score": {
-      "overall_score": 94.2,
+      "overall_score": 91.2,
       "risk_level": "low",
       "pii_detected": [],
-      "details": { ... }
+      "details": { }
     },
     "quality_report": {
       "correlation_score": 91.4,
@@ -272,7 +280,8 @@ Returns all reports once status is `completed`:
       "passed": true,
       "gdpr_passed": true,
       "hipaa_passed": true,
-      "findings": []
+      "findings": [],
+      "pdf_url": "https://signed-url... (expires 1hr)"
     },
     "row_count": 50000,
     "generation_method": "ctgan",
@@ -320,12 +329,12 @@ Response: HTTP 302 redirect to signed PDF URL (expires 1 hour).
 | `RATE_LIMITED` | 429 | Too many requests |
 | `DATASET_NOT_FOUND` | 404 | Dataset ID not found or not owned by you |
 | `SYNTHETIC_NOT_FOUND` | 404 | Synthetic dataset not found |
-| `FILE_TOO_LARGE` | 400 | File exceeds 100MB limit |
+| `FILE_TOO_LARGE` | 400 | File exceeds plan size limit (50MB free, 500MB pro/growth) |
 | `INVALID_FILE_TYPE` | 400 | File type not supported |
 | `CORRUPTED_FILE` | 400 | File could not be parsed |
 | `INVALID_METHOD` | 400 | method must be gaussian_copula or ctgan |
-| `QUOTA_EXCEEDED` | 402 | Monthly generation quota reached |
-| `JOB_LIMIT_REACHED` | 429 | Max 3 concurrent jobs |
+| `QUOTA_EXCEEDED` | 402 | Monthly job quota reached (free: 10/mo) or row cap exceeded (free: 10k rows) |
+| `METHOD_NOT_ALLOWED` | 402 | CTGAN requires Pro or Growth plan |
 | `JOB_NOT_COMPLETE` | 409 | Results not ready yet |
 | `ML_UNAVAILABLE` | 503 | Modal ML service temporarily unavailable |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |

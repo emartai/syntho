@@ -3,42 +3,75 @@
 
 ---
 
-## 🧠 Project Overview
+## Project Overview
 
-**Syntho** is a full-stack Synthetic Data Marketplace SaaS. Companies use it to:
-- Upload real datasets and generate safe synthetic versions
-- Score privacy risk and auto-generate GDPR/HIPAA compliance reports
-- Validate that synthetic data statistically mirrors real data
-- List, sell, and buy synthetic datasets on a marketplace
-- Integrate synthetic data generation into ML pipelines via REST API
+**Syntho** is a Synthetic Data SaaS. Companies use it to:
+- Upload real datasets and generate statistically faithful synthetic versions
+- Get a single composite Trust Score (0–100) combining privacy, fidelity, and compliance
+- Download a GDPR + HIPAA compliance PDF — the headline deliverable
+- Integrate generation into ML pipelines via REST API (Pro/Growth plans)
+
+**Core value prop in one sentence:** Upload a real dataset → get a safe synthetic version + a compliance PDF in under 5 minutes.
 
 **Design:** Plasma Aurora UI + Data Helix Logo (see design.md for full spec)
 
 ---
 
-## 🏗️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, shadcn/ui |
-| Backend | FastAPI (Python 3.11) on Render (free tier) |
+| Backend | FastAPI (Python 3.11) on Render |
 | Auth | Supabase Auth — Google + GitHub OAuth |
 | Database | Supabase PostgreSQL |
 | File Storage | Supabase Storage |
-| Realtime | Supabase Realtime — job progress tracking |
-| Job Queue | BullMQ + Redis (Render free Redis 25MB) |
-| ML Engine | Modal.com — always-on T4 GPU (CTGAN, SDV, Presidio) |
+| Realtime | Supabase Realtime — job progress + notifications |
+| ML Engine | Modal.com — T4 GPU (CTGAN, SDV, Presidio) |
 | PDF Reports | ReportLab (Python) |
-| Payments | Flutterwave |
+| Payments | Flutterwave (subscription upgrades) |
 | Frontend Deploy | Vercel |
-| Backend Uptime | UptimeRobot pings /health every 5 min |
 | Charts | Recharts |
 | Forms | React Hook Form + Zod |
 | HTTP Client | Axios + TanStack React Query |
 
 ---
 
-## 📁 Folder Structure
+## Plans + Pricing
+
+| Plan | Price | Jobs/month | Max rows/job | Methods | API Keys |
+|------|-------|-----------|--------------|---------|----------|
+| Free | ₦0 | 10 | 10,000 | Gaussian Copula only | No |
+| Pro | ₦5,000/mo | Unlimited | 500,000 | CTGAN + Gaussian Copula | Yes |
+| Growth | ₦15,000/mo | Unlimited | 5,000,000 | All methods | Yes + priority GPU |
+
+Quota config constants (backend/app/config.py):
+- FREE_JOBS_QUOTA = 10
+- FREE_ROW_CAP = 10000
+- PRO_ROW_CAP = 500000
+- GROWTH_ROW_CAP = 5000000
+
+---
+
+## Composite Trust Score Formula
+
+The single number shown to users after generation. Computed in Modal, saved to trust_scores table.
+
+```
+composite = (privacy_score × 0.40) + (fidelity_score × 0.40) + (compliance_score × 0.20)
+
+fidelity_score      = quality_reports.overall_score
+compliance_score    = 100 if passed else 50 (partial if one of gdpr/hipaa passes)
+All inputs clamped 0–100. Final composite clamped 0–100.
+
+Labels: 90–100 Excellent | 75–89 Good | 60–74 Fair | 0–59 Needs Improvement
+```
+
+**There are NO separate report tabs.** Privacy, quality, and compliance are sections on a single scrollable result page. The PDF is foregrounded as the primary download CTA.
+
+---
+
+## Folder Structure
 
 ```
 syntho/
@@ -53,22 +86,28 @@ syntho/
 │   │   │   ├── upload/page.tsx
 │   │   │   ├── datasets/
 │   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/page.tsx
-│   │   │   ├── generate/[id]/page.tsx
-│   │   │   ├── marketplace/
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/page.tsx
-│   │   │   ├── sell/page.tsx
-│   │   │   ├── api-keys/page.tsx
-│   │   │   ├── billing/page.tsx
-│   │   │   └── admin/page.tsx
+│   │   │   │   └── [id]/page.tsx        ← original dataset detail OR synthetic result
+│   │   │   ├── generate/[id]/page.tsx   ← generation config + job progress
+│   │   │   ├── api-keys/page.tsx        ← Launch feature (Pro/Growth)
+│   │   │   └── settings/billing/page.tsx
+│   │   ├── _components/                 ← landing page sections
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── Hero.tsx
+│   │   │   ├── SocialProofBar.tsx
+│   │   │   ├── HowItWorks.tsx
+│   │   │   ├── Features.tsx
+│   │   │   ├── Pricing.tsx
+│   │   │   ├── FAQ.tsx
+│   │   │   ├── FinalCTA.tsx
+│   │   │   └── Footer.tsx
 │   │   ├── api/webhooks/flutterwave/route.ts
+│   │   ├── error.tsx
+│   │   ├── not-found.tsx
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── components/
-│   │   ├── ui/                    # shadcn/ui
-│   │   ├── brand/
-│   │   │   └── Logo.tsx           # Data Helix SVG logo
+│   │   ├── ui/                          ← shadcn/ui primitives
+│   │   ├── brand/Logo.tsx
 │   │   ├── layout/
 │   │   │   ├── AuroraBackground.tsx
 │   │   │   ├── Sidebar.tsx
@@ -77,35 +116,34 @@ syntho/
 │   │   │   ├── Dropzone.tsx
 │   │   │   └── SchemaPreview.tsx
 │   │   ├── datasets/
-│   │   │   ├── DatasetCard.tsx
 │   │   │   └── DatasetTable.tsx
 │   │   ├── reports/
-│   │   │   ├── QualityReport.tsx
-│   │   │   ├── PrivacyScore.tsx
-│   │   │   └── ComplianceReport.tsx
-│   │   ├── marketplace/
-│   │   │   ├── ListingCard.tsx
-│   │   │   └── CheckoutModal.tsx
+│   │   │   └── TrustScore.tsx           ← composite score gauge (replaces 3 separate screens)
 │   │   ├── charts/
 │   │   │   ├── DistributionChart.tsx
 │   │   │   └── CorrelationHeatmap.tsx
 │   │   └── shared/
 │   │       ├── JobProgress.tsx
-│   │       └── ApiKeyCard.tsx
+│   │       ├── NotificationPanel.tsx    ← Launch feature
+│   │       ├── UpgradeModal.tsx
+│   │       ├── EmptyState.tsx
+│   │       ├── LoadingSpinner.tsx
+│   │       ├── CardSkeleton.tsx
+│   │       └── TableSkeleton.tsx
 │   ├── lib/
 │   │   ├── supabase/
 │   │   │   ├── client.ts
-│   │   │   ├── server.ts
-│   │   │   └── middleware.ts
+│   │   │   └── server.ts
 │   │   ├── api.ts
 │   │   ├── flutterwave.ts
-│   │   └── utils.ts
+│   │   └/utils.ts
 │   ├── hooks/
-│   │   ├── useDatasets.ts
+│   │   ├── useAuth.ts
 │   │   ├── useJobProgress.ts
-│   │   └── useAuth.ts
+│   │   └── useNotifications.ts          ← Launch feature
 │   ├── types/index.ts
-│   ├── .env.local
+│   ├── middleware.ts
+│   ├── vercel.json
 │   └── package.json
 │
 ├── backend/
@@ -116,51 +154,61 @@ syntho/
 │   │   │   ├── datasets.py
 │   │   │   ├── generate.py
 │   │   │   ├── reports.py
-│   │   │   ├── marketplace.py
-│   │   │   ├── api_keys.py
+│   │   │   ├── api_keys.py              ← Launch feature
+│   │   │   ├── notifications.py         ← Launch feature
+│   │   │   ├── billing.py              ← Flutterwave subscription
 │   │   │   └── webhooks.py
 │   │   ├── services/
 │   │   │   ├── supabase.py
 │   │   │   ├── storage.py
 │   │   │   ├── modal_client.py
 │   │   │   ├── schema_detector.py
-│   │   │   ├── pdf_generator.py
 │   │   │   └── flutterwave.py
-│   │   ├── models/schemas.py
-│   │   └── middleware/auth.py
-│   ├── requirements.txt
-│   ├── Procfile
-│   └── .env
+│   │   ├── middleware/auth.py           ← handles JWT + API key auth
+│   │   ├── dependencies/
+│   │   │   └── quota.py                ← freemium enforcement
+│   │   └── models/schemas.py
+│   ├── render.yaml
+│   └── requirements.txt
 │
-└── modal_ml/
-    ├── main.py
-    ├── ctgan_generator.py
-    ├── sdv_generator.py
-    ├── privacy_scorer.py
-    ├── correlation_validator.py
-    ├── quality_reporter.py
-    ├── compliance_reporter.py
-    ├── utils.py
-    └── requirements.txt
+├── modal_ml/
+│   ├── main.py                          ← Modal app + web endpoint + generate_synthetic()
+│   ├── ctgan_generator.py
+│   ├── sdv_generator.py
+│   ├── privacy_scorer.py
+│   ├── correlation_validator.py
+│   ├── quality_reporter.py
+│   ├── compliance_reporter.py           ← generates GDPR/HIPAA PDF (headline feature)
+│   └── utils.py                         ← update_job_progress, create_notification
+│
+└── supabase/
+    └── migrations/
+        ├── 001_initial_schema.sql
+        ├── 002_rls_policies.sql
+        ├── 003_storage_policies.sql
+        ├── 004_freemium_quota.sql
+        └── 005_indexes.sql
 ```
 
 ---
 
-## 🗄️ Supabase Database Schema
+## Database Schema
 
 ```sql
+-- User profiles (auto-created on signup)
 CREATE TABLE profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   email TEXT NOT NULL,
   full_name TEXT,
   avatar_url TEXT,
   role TEXT DEFAULT 'user' CHECK (role IN ('user','admin')),
-  flutterwave_subaccount_id TEXT,
-  bank_account_verified BOOLEAN DEFAULT FALSE,
-  api_quota INTEGER DEFAULT 100,
+  plan TEXT DEFAULT 'free' CHECK (plan IN ('free','pro','growth')),
+  jobs_used_this_month INTEGER DEFAULT 0,
+  quota_reset_at TIMESTAMPTZ DEFAULT (date_trunc('month', NOW()) + INTERVAL '1 month'),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Original uploaded datasets
 CREATE TABLE datasets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -172,24 +220,38 @@ CREATE TABLE datasets (
   row_count INTEGER,
   column_count INTEGER,
   schema JSONB,
-  status TEXT DEFAULT 'uploaded' CHECK (status IN ('uploaded','processing','ready','error')),
+  status TEXT DEFAULT 'uploaded' CHECK (status IN ('uploading','processing','ready','error')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Generated synthetic datasets
 CREATE TABLE synthetic_datasets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   original_dataset_id UUID REFERENCES datasets(id) ON DELETE CASCADE,
   user_id UUID REFERENCES profiles(id),
-  generation_method TEXT CHECK (generation_method IN ('ctgan','gaussian_copula','tvae')),
+  generation_method TEXT CHECK (generation_method IN ('ctgan','gaussian_copula')),
   file_path TEXT,
   row_count INTEGER,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending','running','completed','failed')),
-  job_id TEXT,
   progress INTEGER DEFAULT 0,
+  error_message TEXT,
   config JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Composite trust scores (1 per synthetic dataset)
+CREATE TABLE trust_scores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  synthetic_dataset_id UUID REFERENCES synthetic_datasets(id) ON DELETE CASCADE UNIQUE,
+  composite_score NUMERIC(5,2),
+  privacy_score NUMERIC(5,2),
+  fidelity_score NUMERIC(5,2),
+  compliance_score NUMERIC(5,2),
+  label TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Privacy analysis
 CREATE TABLE privacy_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   synthetic_dataset_id UUID REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
@@ -200,16 +262,7 @@ CREATE TABLE privacy_scores (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE compliance_reports (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  synthetic_dataset_id UUID REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
-  report_type TEXT CHECK (report_type IN ('gdpr','hipaa','combined')),
-  file_path TEXT,
-  passed BOOLEAN,
-  findings JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
+-- Quality + fidelity metrics
 CREATE TABLE quality_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   synthetic_dataset_id UUID REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
@@ -221,34 +274,20 @@ CREATE TABLE quality_reports (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE marketplace_listings (
+-- GDPR/HIPAA compliance results
+CREATE TABLE compliance_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  seller_id UUID REFERENCES profiles(id),
-  synthetic_dataset_id UUID REFERENCES synthetic_datasets(id),
-  title TEXT NOT NULL,
-  description TEXT,
-  tags TEXT[],
-  category TEXT,
-  price NUMERIC(10,2) NOT NULL,
-  currency TEXT DEFAULT 'NGN',
-  is_active BOOLEAN DEFAULT TRUE,
-  download_count INTEGER DEFAULT 0,
-  preview_schema JSONB,
+  synthetic_dataset_id UUID REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
+  report_type TEXT CHECK (report_type IN ('gdpr','hipaa','combined')),
+  file_path TEXT,
+  passed BOOLEAN,
+  gdpr_passed BOOLEAN,
+  hipaa_passed BOOLEAN,
+  findings JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE purchases (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  buyer_id UUID REFERENCES profiles(id),
-  listing_id UUID REFERENCES marketplace_listings(id),
-  amount NUMERIC(10,2),
-  currency TEXT,
-  flutterwave_tx_ref TEXT UNIQUE,
-  flutterwave_tx_id TEXT,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','completed','failed','refunded')),
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
+-- API keys (Pro/Growth plans only)
 CREATE TABLE api_keys (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -263,21 +302,22 @@ CREATE TABLE api_keys (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- In-app notifications (Launch feature)
 CREATE TABLE notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES profiles(id),
-  type TEXT,
-  title TEXT,
-  message TEXT,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  type TEXT CHECK (type IN ('job_complete','job_failed','quota_warning','quota_exhausted')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
   link TEXT,
   read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Job event log
 CREATE TABLE job_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_id TEXT,
-  synthetic_dataset_id UUID REFERENCES synthetic_datasets(id),
+  synthetic_dataset_id UUID REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
   event TEXT,
   message TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -286,7 +326,32 @@ CREATE TABLE job_logs (
 
 ---
 
-## 🔐 Environment Variables
+## ML Pipeline Flow
+
+```
+1. User uploads CSV/JSON/Parquet/Excel → FastAPI → Supabase Storage
+2. FastAPI detects schema (pandas) → saves to datasets table
+3. User selects generation method + num_rows on /generate/[id]
+   - Free: Gaussian Copula only, max 10k rows
+   - Pro/Growth: CTGAN available, no row cap
+4. FastAPI checks quota → creates synthetic_datasets record (status: pending) → calls Modal
+5. Modal (T4 GPU) runs generate_synthetic():
+   a. Download original file from Supabase Storage
+   b. CTGAN or Gaussian Copula generation
+   c. Upload synthetic CSV to Supabase Storage
+   d. Presidio PII detection → privacy_scorer → save privacy_scores
+   e. Correlation + KS test → quality_reporter → save quality_reports
+   f. GDPR/HIPAA checks → compliance_reporter → generate PDF → save compliance_reports
+   g. Compute composite trust score → save trust_scores
+   h. Create notification (job_complete or job_failed)
+   i. Update synthetic_datasets: status='completed', progress=100
+6. Supabase Realtime → frontend shows live progress
+7. User sees composite trust score + downloads compliance PDF
+```
+
+---
+
+## Environment Variables
 
 ### Frontend (.env.local)
 ```env
@@ -294,6 +359,7 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_API_URL=https://your-render-app.onrender.com
 NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY=your_flutterwave_public_key
+NEXT_PUBLIC_SAMPLE_DATASET_PATH=datasets/sample/nigerian_retail_sample.csv
 ```
 
 ### Backend (.env)
@@ -305,11 +371,13 @@ FLUTTERWAVE_SECRET_KEY=your_flutterwave_secret_key
 FLUTTERWAVE_WEBHOOK_HASH=your_flutterwave_webhook_hash
 MODAL_API_URL=https://your-username--syntho-ml-run-job.modal.run
 MODAL_API_SECRET=your_modal_shared_secret
-REDIS_URL=your_render_redis_url
-GROQ_API_KEY=your_groq_api_key
+FRONTEND_URL=https://syntho.vercel.app
+ALLOWED_ORIGINS=https://syntho.vercel.app,https://syntho-henna.vercel.app
+FREE_JOBS_QUOTA=10
+FREE_ROW_CAP=10000
 ```
 
-### Modal ML (modal.com/secrets → syntho-secrets)
+### Modal ML (modal secret: syntho-secrets)
 ```env
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_KEY=your_supabase_service_role_key
@@ -318,24 +386,25 @@ MODAL_API_SECRET=your_modal_shared_secret
 
 ---
 
-## 📦 Dependencies
+## Dependencies
 
 ### Backend (requirements.txt)
 ```
-fastapi==0.109.0
-uvicorn==0.27.0
+fastapi==0.111.0
+uvicorn==0.29.0
 python-multipart==0.0.9
-supabase==2.3.4
-pandas==2.1.4
-pyarrow==14.0.2
+supabase==2.4.0
+pandas==2.2.0
+pyarrow==15.0.0
 openpyxl==3.1.2
 python-jose[cryptography]==3.3.0
-httpx==0.26.0
-reportlab==4.0.9
-redis==5.0.1
+httpx==0.27.0
+reportlab==4.1.0
 python-dotenv==1.0.0
-pydantic==2.5.3
+pydantic==2.6.0
+pydantic-settings==2.2.0
 python-magic==0.4.27
+python-magic-bin==0.4.14
 ```
 
 ### Modal ML (modal_ml/requirements.txt)
@@ -343,152 +412,115 @@ python-magic==0.4.27
 modal==0.62.0
 sdv==1.9.0
 ctgan==0.7.5
-scikit-learn==1.3.2
-scipy==1.11.4
+scikit-learn==1.4.0
+scipy==1.12.0
 presidio-analyzer==2.2.354
 presidio-anonymizer==2.2.354
-ydata-profiling==4.6.4
-matplotlib==3.8.2
-seaborn==0.13.1
-reportlab==4.0.9
-supabase==2.3.4
-pandas==2.1.4
-pyarrow==14.0.2
-fastapi==0.109.0
+matplotlib==3.8.3
+seaborn==0.13.2
+reportlab==4.1.0
+supabase==2.4.0
+pandas==2.2.0
+pyarrow==15.0.0
+fastapi==0.111.0
 ```
 
-### Frontend (package.json)
+### Frontend (package.json key deps)
 ```json
 {
   "dependencies": {
-    "next": "14.1.0",
-    "typescript": "5.3.3",
+    "next": "14.2.0",
+    "typescript": "5.4.0",
     "tailwindcss": "3.4.1",
-    "@supabase/supabase-js": "2.39.3",
-    "@supabase/ssr": "0.1.0",
+    "@supabase/supabase-js": "2.42.0",
+    "@supabase/ssr": "0.3.0",
     "react-dropzone": "14.2.3",
-    "@tanstack/react-query": "5.17.19",
-    "recharts": "2.10.4",
-    "react-hook-form": "7.49.3",
+    "@tanstack/react-query": "5.28.0",
+    "recharts": "2.12.0",
+    "react-hook-form": "7.51.0",
     "zod": "3.22.4",
-    "axios": "1.6.5",
+    "axios": "1.6.8",
     "flutterwave-react-v3": "1.0.9",
-    "lucide-react": "0.309.0",
-    "date-fns": "3.2.0",
-    "sonner": "1.3.1",
+    "lucide-react": "0.363.0",
+    "date-fns": "3.6.0",
+    "sonner": "1.4.41",
     "clsx": "2.1.0",
-    "tailwind-merge": "2.2.0"
+    "tailwind-merge": "2.2.2"
   }
 }
 ```
 
 ---
 
-## 🔄 ML Pipeline Flow
+## Naming Conventions
 
-```
-1. User uploads CSV/JSON/Parquet → FastAPI → Supabase Storage
-2. FastAPI detects schema (pandas) → saves to datasets table
-3. User selects generation method + config on /generate/[id]
-4. FastAPI creates synthetic_datasets record (status: pending)
-5. FastAPI POST → Modal.com web endpoint (always-on, T4 GPU)
-6. Modal runs:
-   a. Downloads original file from Supabase Storage
-   b. CTGAN or SDV Gaussian Copula generation
-   c. Presidio PII scanner → privacy score
-   d. Correlation + distribution validation
-   e. Quality comparison stats
-   f. GDPR/HIPAA compliance PDF (ReportLab)
-   g. Uploads all outputs to Supabase Storage
-   h. Updates all DB tables (synthetic_datasets, privacy_scores, quality_reports, compliance_reports)
-7. Supabase Realtime → frontend progress updates
-8. User sees completed reports + download links
-```
-
----
-
-## 💳 Flutterwave Payment Flow
-
-```
-Buyer clicks "Purchase" on marketplace listing
-  → Frontend calls Flutterwave inline checkout (with seller subaccount for 80/20 split)
-  → On success → POST /api/v1/purchases/verify with tx_ref
-  → Backend calls Flutterwave API to verify transaction
-  → Backend creates purchases record (status: completed)
-  → Backend generates signed download URL (1hr expiry)
-  → Webhook arrives → backend logs + reconciles
-```
-
----
-
-## 📋 Naming Conventions
-
-- Files: kebab-case (`dataset-card.tsx`, `privacy-scorer.py`)
-- Components: PascalCase (`DatasetCard`, `PrivacyScore`)
-- Functions: camelCase (`getDatasets`, `generateSyntheticData`)
-- DB tables: snake_case (`synthetic_datasets`, `compliance_reports`)
+- Files: kebab-case (`dataset-table.tsx`, `privacy-scorer.py`)
+- Components: PascalCase (`DatasetTable`, `TrustScore`)
+- Functions: camelCase (`getDatasets`, `generateSynthetic`)
+- DB tables: snake_case (`synthetic_datasets`, `trust_scores`)
 - API routes: `/api/v1/datasets`, `/api/v1/generate`
 - Storage buckets: `datasets` | `synthetic` | `reports`
 - Storage paths: `{bucket}/{user_id}/{resource_id}/{filename}`
+- API keys prefix: `sk_live_`
 
 ---
 
-## 📎 Companion Files
+## Companion Files
 
-- **security.md** — Auth patterns, input validation, secret management, rate limiting, payment verification, pre-launch checklist
-- **design.md** — Full Plasma Aurora + Data Helix design system. Colors, typography, components, animations, logo spec
-- **setup-guide.md** — Step-by-step setup for Supabase, Modal, Flutterwave, Render, Vercel, UptimeRobot
-- **25-prompts.md** — All 25 build prompts, ready to copy-paste
+- **security.md** — Auth patterns, input validation, secret management, rate limiting, payment verification
+- **design.md** — Full Plasma Aurora + Data Helix design system. Colors, typography, components, animations
+- **prompt.md** — All 20 build prompts for the Launch MVP
 - **api-reference.md** — Complete API endpoint documentation
+- **setup-guide.md** — Step-by-step local dev setup
 
 ---
 
-## 🚦 Build Progress Tracker
-
-| # | Module | Status |
-|---|--------|--------|
-| 1 | Project scaffold + design system setup | ⬜ |
-| 2 | Supabase schema + auth (Google/GitHub) | ⬜ |
-| 3 | Layout shell — Sidebar, Navbar, AuroraBackground | ⬜ |
-| 4 | Upload UI — Dropzone + Schema Preview | ⬜ |
-| 5 | FastAPI setup + file handling + storage | ⬜ |
-| 6 | Schema detection engine | ⬜ |
-| 7 | Modal.com ML pipeline setup | ⬜ |
-| 8 | Statistical mimicry (SDV) | ⬜ |
-| 9 | GAN-based generation (CTGAN) | ⬜ |
-| 10 | Privacy risk scorer | ⬜ |
-| 11 | GDPR/HIPAA compliance PDF | ⬜ |
-| 12 | Correlation preservation validator | ⬜ |
-| 13 | Data quality comparison report | ⬜ |
-| 14 | Realtime job tracking UI | ⬜ |
-| 15 | Marketplace — browse + search | ⬜ |
-| 16 | Marketplace — seller side | ⬜ |
-| 17 | Flutterwave checkout | ⬜ |
-| 18 | Marketplace split payments | ⬜ |
-| 19 | API key management | ⬜ |
-| 20 | Public REST API + rate limiting | ⬜ |
-| 21 | User dashboard + analytics | ⬜ |
-| 22 | Admin panel | ⬜ |
-| 23 | Notifications + email | ⬜ |
-| 24 | Error handling + loading states | ⬜ |
-| 25 | Deployment + final config | ⬜ |
-
----
-
-## ⚠️ Key Rules for Claude
+## Key Rules for Claude
 
 1. Always use **TypeScript** — no plain JS
 2. Use **Supabase SSR client** in server components, browser client in client components
 3. All API calls go through **`/lib/api.ts`** Axios instance with auth headers
 4. All DB writes use **Supabase service role key** (backend only — never frontend)
 5. File paths in DB are **Storage paths**, not full URLs
-6. **Never expose** Supabase service key or any secrets to frontend
+6. **Never expose** Supabase service key or any secret to frontend
 7. Use **shadcn/ui** components before writing custom ones
 8. All forms: **React Hook Form + Zod**
 9. All async data: **TanStack React Query**
 10. Supabase Realtime subscriptions in **custom hooks** (`/hooks/`)
 11. Follow **security.md** for all auth, file upload, payment, DB code
-12. Follow **design.md** for all UI — Bricolage Grotesque headings, Plus Jakarta Sans body, aurora palette
-13. File storage paths: `{bucket}/{user_id}/{resource_id}/{filename}`
-14. Privacy score >= 40 required before marketplace listing (server-side enforced)
-15. Never return raw error messages to client
+12. Follow **design.md** for all UI — Clash Display headings, Satoshi body, JetBrains Mono code, aurora palette
+13. Storage paths: `{bucket}/{user_id}/{resource_id}/{filename}`
+14. **NO separate privacy/quality/compliance tabs** — everything on one scrollable result page
+15. The **compliance PDF is the primary download CTA** — always foregrounded, never buried
+16. Free tier: enforce both job quota (10/mo) AND row cap (10k) — both checked before job starts
+17. API Keys are a **Launch feature** — no feature flag, always available (gated by plan, not flag)
+18. In-app notifications are a **Launch feature** — no feature flag
+19. Never return raw error messages to client — always map to friendly copy
+20. `.single()` in supabase-py throws 406 on no rows — use `.limit(1).execute()` and check `.data`
+
+---
+
+## Build Progress Tracker
+
+| # | Module | Status |
+|---|--------|--------|
+| 1 | Project scaffold + design system | ⬜ |
+| 2 | Supabase schema + auth | ⬜ |
+| 3 | Layout + dashboard shell | ⬜ |
+| 4 | Upload UI + dropzone + onboarding hint | ⬜ |
+| 5 | FastAPI backend + file handling + quota | ⬜ |
+| 6 | Schema detection engine | ⬜ |
+| 7 | Modal.com ML pipeline setup | ⬜ |
+| 8 | Gaussian Copula generator | ⬜ |
+| 9 | CTGAN generator (Pro/Growth only) | ⬜ |
+| 10 | Privacy risk scorer | ⬜ |
+| 11 | Compliance PDF — headline feature | ⬜ |
+| 12 | Quality report + correlation validator | ⬜ |
+| 13 | Composite trust score UI | ⬜ |
+| 14 | Real-time job progress | ⬜ |
+| 15 | Freemium quota + billing page | ⬜ |
+| 16 | API Keys (Launch feature) | ⬜ |
+| 17 | In-app notifications (Launch feature) | ⬜ |
+| 18 | Error handling + loading states + onboarding | ⬜ |
+| 19 | Dataset list + detail pages | ⬜ |
+| 20 | Deployment + production config | ⬜ |
