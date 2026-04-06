@@ -1,81 +1,23 @@
+from __future__ import annotations
+
 import uuid
-from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.config import settings
 from app.dependencies.quota import enforce_generation_quota
 from app.middleware.auth import get_current_user
+from app.services.modal_client import trigger_modal_job
 from app.services.supabase import get_supabase
 from app.services.storage import storage_service
 
 router = APIRouter(tags=["generate"])
 
 
-async def trigger_modal_generation(
-    synthetic_id: str,
-    user_id: str,
-    dataset_id: str,
-    method: str,
-    num_rows: int,
-    file_url: str,
-):
-    """Background task: call Modal ML endpoint."""
-    import httpx
-
-    payload = {
-        "synthetic_dataset_id": synthetic_id,
-        "user_id": user_id,
-        "dataset_id": dataset_id,
-        "method": method,
-        "num_rows": num_rows or 1000,
-        "file_url": file_url,
-        "supabase_url": settings.SUPABASE_URL,
-        "supabase_key": settings.SUPABASE_SERVICE_KEY,
-    }
-    headers = {}
-    if settings.MODAL_API_SECRET:
-        headers["X-API-Secret"] = settings.MODAL_API_SECRET
-
-    try:
-        async with httpx.AsyncClient(timeout=1800.0) as client:
-            resp = await client.post(
-                settings.MODAL_API_URL,
-                json=payload,
-                headers=headers,
-            )
-            resp.raise_for_status()
-    except Exception as e:
-        supabase = get_supabase()
-        supabase.table("synthetic_datasets").update(
-            {
-                "status": "failed",
-                "error_message": f"ML service error: {str(e)}",
-            }
-        ).eq("id", synthetic_id).execute()
-
-
-@router.post("/generate", status_code=status.HTTP_201_CREATED)
-async def create_generation_job(
-    body: dict,
-    background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user),
-):
-    """Create a synthetic generation record and trigger Modal job."""
-    user_id = user["id"]
-    dataset_id = body.get("dataset_id")
-    method = body.get("method")
-    num_rows = body.get("num_rows", 1000)
-
-    if not dataset_id or not method:
-        raise HTTPException(status_code=400, detail="dataset_id and method are required")
-
+def _get_dataset_for_user(dataset_id: str, user_id: str) -> dict:
     supabase = get_supabase()
-
-    # Verify dataset ownership and status
     dataset_resp = (
         supabase.table("datasets")
-        .select("id,file_path,file_type,user_id,status,row_count")
+        .select("*")
         .eq("id", dataset_id)
         .eq("user_id", user_id)
         .limit(1)
@@ -84,13 +26,48 @@ async def create_generation_job(
     dataset = dataset_resp.data[0] if dataset_resp.data else None
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
+    return dataset
+
+
+@router.post("/generate", status_code=status.HTTP_201_CREATED)
+async def create_generation_job(
+    body: dict,
+    user: dict = Depends(get_current_user),
+):
+    user_id = user["id"]
+    dataset_id = body.get("dataset_id")
+    method = body.get("method")
+    config = body.get("config") or {}
+    num_rows = int(config.get("num_rows") or body.get("num_rows") or 0)
+
+    if not dataset_id or not method:
+        raise HTTPException(status_code=400, detail="dataset_id and method are required")
+    if method not in {"ctgan", "gaussian_copula"}:
+        raise HTTPException(status_code=400, detail="Unsupported generation method")
+
+    dataset = _get_dataset_for_user(dataset_id, user_id)
     if dataset.get("status") != "ready":
         raise HTTPException(status_code=400, detail="Dataset is not ready")
-    
-    # Check quota and free row cap
-    enforce_generation_quota(user_id=user_id, dataset_row_count=dataset.get("row_count", 0))
 
-    # Check for already-running job
+    profile = enforce_generation_quota(
+        user_id=user_id,
+        dataset_row_count=int(dataset.get("row_count") or 0),
+        method=method,
+    )
+
+    if profile.get("plan") == "free" and method == "gaussian_copula":
+        requested_rows = num_rows or int(dataset.get("row_count") or 0)
+        if requested_rows > 10_000:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "free_limit_reached",
+                    "message": "Free plans can generate at most 10,000 rows.",
+                    "upgrade_url": "/settings/billing",
+                },
+            )
+
+    supabase = get_supabase()
     running_check = (
         supabase.table("synthetic_datasets")
         .select("id,status")
@@ -106,39 +83,39 @@ async def create_generation_job(
         )
 
     synthetic_id = str(uuid.uuid4())
+    insert_payload = {
+        "id": synthetic_id,
+        "original_dataset_id": dataset_id,
+        "user_id": user_id,
+        "generation_method": method,
+        "status": "pending",
+        "progress": 0,
+        "config": {
+            **config,
+            "num_rows": num_rows or int(dataset.get("row_count") or 0),
+            "plan": profile.get("plan", "free"),
+        },
+    }
+    inserted = supabase.table("synthetic_datasets").insert(insert_payload).execute()
+    synthetic_row = inserted.data[0] if inserted.data else insert_payload
 
-    # Create synthetic dataset row
-    supabase.table("synthetic_datasets").insert(
-        {
-            "id": synthetic_id,
-            "original_dataset_id": dataset_id,
-            "user_id": user_id,
-            "generation_method": method,
-            "status": "pending",
-            "progress": 0,
-        }
-    ).execute()
+    modal_payload = {
+        "synthetic_dataset_id": synthetic_id,
+        "dataset_file_path": dataset["file_path"],
+        "original_file_path": dataset["file_path"],
+        "original_file_type": dataset.get("file_type"),
+        "original_dataset_id": dataset_id,
+        "method": method,
+        "config": synthetic_row["config"],
+        "user_id": user_id,
+    }
 
-    # Generate signed URL for the original file (60 min expiry)
-    try:
-        file_url = storage_service.get_signed_url(
-            "datasets", dataset["file_path"], expires_in=3600
-        )
-    except Exception:
-        file_url = ""
+    job_id = await trigger_modal_job(modal_payload)
+    if job_id:
+        supabase.table("synthetic_datasets").update({"job_id": job_id}).eq("id", synthetic_id).execute()
+        synthetic_row["job_id"] = job_id
 
-    # Fire background task
-    background_tasks.add_task(
-        trigger_modal_generation,
-        synthetic_id,
-        user_id,
-        dataset_id,
-        method,
-        num_rows,
-        file_url,
-    )
-
-    return {"id": synthetic_id, "status": "pending"}
+    return synthetic_row
 
 
 @router.get("/generate/{synthetic_dataset_id}/status")
@@ -146,7 +123,6 @@ async def get_generation_status(
     synthetic_dataset_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Get current status of a generation job."""
     supabase = get_supabase()
     result = (
         supabase.table("synthetic_datasets")
@@ -166,7 +142,6 @@ async def cancel_generation_job(
     synthetic_dataset_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Cancel a generation job."""
     supabase = get_supabase()
     current = (
         supabase.table("synthetic_datasets")
@@ -185,19 +160,17 @@ async def cancel_generation_job(
     cancelled = {
         "status": "failed",
         "error_message": "Generation cancelled by user",
+        "progress": 0,
     }
-    supabase.table("synthetic_datasets").update(cancelled).eq(
-        "id", synthetic_dataset_id
-    ).execute()
+    supabase.table("synthetic_datasets").update(cancelled).eq("id", synthetic_dataset_id).execute()
     return {"id": synthetic_dataset_id, **cancelled}
 
 
 @router.get("/synthetic")
 async def list_synthetic_datasets(
     user: dict = Depends(get_current_user),
-    dataset_id: str = None,
+    dataset_id: str | None = None,
 ):
-    """List synthetic datasets. Optionally filter by original dataset_id."""
     supabase = get_supabase()
     query = (
         supabase.table("synthetic_datasets")
@@ -216,7 +189,6 @@ async def get_synthetic_dataset(
     synthetic_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Get a single synthetic dataset."""
     supabase = get_supabase()
     result = (
         supabase.table("synthetic_datasets")
@@ -228,7 +200,35 @@ async def get_synthetic_dataset(
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Synthetic dataset not found")
-    return result.data[0]
+
+    synthetic_dataset = result.data[0]
+
+    def latest(table: str) -> dict | None:
+        try:
+            rows = (
+                supabase.table(table)
+                .select("*")
+                .eq("synthetic_dataset_id", synthetic_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return rows.data[0] if rows.data else None
+        except Exception:
+            return None
+
+    trust_score = latest("trust_scores")
+    privacy_score = latest("privacy_scores")
+    quality_report = latest("quality_reports")
+    compliance_report = latest("compliance_reports")
+
+    return {
+        **synthetic_dataset,
+        "trust_score": trust_score,
+        "privacy_score": privacy_score,
+        "quality_report": quality_report,
+        "compliance_report": compliance_report,
+    }
 
 
 @router.get("/synthetic/{synthetic_id}/download")
@@ -236,7 +236,6 @@ async def download_synthetic(
     synthetic_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Get signed download URL for a synthetic dataset."""
     supabase = get_supabase()
     result = (
         supabase.table("synthetic_datasets")

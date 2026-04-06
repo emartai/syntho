@@ -298,17 +298,11 @@ export default function DashboardPage() {
                 <span>Trust Score</span>
               </div>
 
-              {(data?.recentJobs ?? []).map((job: {
-                id: string;
-                status: string;
-                progress: number;
-                generation_method: string;
-                error_message?: string;
-                created_at: string;
-                datasets?: { name?: string } | null;
-              }) => {
+              {(data?.recentJobs ?? []).map((job: any) => {
                 const trust = trustMap[job.id];
-                const datasetName = job.datasets?.name ?? 'Unknown dataset';
+                const datasetName = Array.isArray(job.datasets)
+                  ? job.datasets[0]?.name ?? 'Unknown dataset'
+                  : job.datasets?.name ?? 'Unknown dataset';
                 const ago = formatDistanceToNow(new Date(job.created_at), { addSuffix: true });
 
                 return (
@@ -316,7 +310,7 @@ export default function DashboardPage() {
                     key={job.id}
                     href={
                       job.status === 'completed'
-                        ? `/datasets/${job.id}/results`
+                        ? `/datasets/${job.id}`
                         : job.status === 'running' || job.status === 'pending'
                         ? `/generate/${job.id}`
                         : '/datasets'

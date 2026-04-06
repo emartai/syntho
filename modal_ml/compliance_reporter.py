@@ -200,6 +200,7 @@ def generate_compliance_report(
     synthetic_df: pd.DataFrame,
     privacy_score_result: dict[str, Any],
     synthetic_dataset_id: str,
+    user_id: str,
     report_type: str = "combined",
 ) -> bytes:
     privacy_score = float(privacy_score_result.get("overall_score", 0) or 0)
@@ -328,7 +329,7 @@ def generate_compliance_report(
     doc.build(story)
     pdf_bytes = pdf.getvalue()
 
-    file_path = f"reports/{synthetic_dataset_id}/compliance.pdf"
+    file_path = f"{user_id}/{synthetic_dataset_id}/compliance.pdf"
     upload_to_storage("reports", file_path, pdf_bytes, "application/pdf")
 
     findings_payload = {
@@ -362,8 +363,11 @@ def compliance_reporter(
 ) -> bytes:
     context = context or {}
     synthetic_dataset_id = str(context.get("synthetic_dataset_id") or context.get("payload", {}).get("synthetic_dataset_id"))
+    user_id = str(context.get("user_id") or context.get("payload", {}).get("user_id"))
     if not synthetic_dataset_id:
         raise ValueError("synthetic_dataset_id is required in context")
+    if not user_id:
+        raise ValueError("user_id is required in context")
 
     report_type = str(context.get("report_type") or "combined")
 
@@ -374,15 +378,15 @@ def compliance_reporter(
         .eq("synthetic_dataset_id", synthetic_dataset_id)
         .order("created_at", desc=True)
         .limit(1)
-        .maybe_single()
         .execute()
     )
-    privacy_score_result = privacy_record.data or {}
+    privacy_score_result = (privacy_record.data[0] if privacy_record.data else {}) or {}
 
     return generate_compliance_report(
         original_df=original_df,
         synthetic_df=synthetic_df,
         privacy_score_result=privacy_score_result,
         synthetic_dataset_id=synthetic_dataset_id,
+        user_id=user_id,
         report_type=report_type,
     )

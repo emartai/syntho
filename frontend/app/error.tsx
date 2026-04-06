@@ -14,7 +14,7 @@ interface ErrorProps {
 export default function Error({ error, reset }: ErrorProps) {
   useEffect(() => {
     toast.error('Something went wrong', {
-      description: error.message || 'An unexpected error occurred',
+      description: 'An unexpected error occurred. Please try again.',
     });
   }, [error]);
 

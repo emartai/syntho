@@ -43,7 +43,7 @@ export default function DatasetsPage() {
       <p className="text-white/30 text-sm mb-6">
         Upload your first dataset to start generating synthetic data
       </p>
-      <Link href="/datasets/upload"
+      <Link href="/upload"
         className="btn-gradient px-6 py-3 rounded-xl text-white font-medium inline-block">
         Upload Dataset
       </Link>
@@ -54,7 +54,7 @@ export default function DatasetsPage() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-display font-bold text-white">My Datasets</h1>
-        <Link href="/datasets/upload"
+        <Link href="/upload"
           className="btn-gradient px-4 py-2 rounded-lg text-sm text-white font-medium inline-block">
           + Upload Dataset
         </Link>

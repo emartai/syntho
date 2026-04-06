@@ -78,3 +78,37 @@ def log_job_event(synthetic_dataset_id: str, event: str, message: str) -> None:
             "created_at": datetime.utcnow().isoformat(),
         }
     ).execute()
+
+
+def create_notification(
+    user_id: str,
+    notification_type: str,
+    title: str,
+    message: str,
+    link: str | None = None,
+) -> None:
+    supabase = supabase_client()
+    supabase.table("notifications").insert(
+        {
+            "user_id": user_id,
+            "type": notification_type,
+            "title": title,
+            "message": message,
+            "link": link,
+            "read": False,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+    ).execute()
+
+
+def latest_record(table: str, synthetic_dataset_id: str) -> dict[str, Any] | None:
+    supabase = supabase_client()
+    response = (
+        supabase.table(table)
+        .select("*")
+        .eq("synthetic_dataset_id", synthetic_dataset_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return response.data[0] if response.data else None

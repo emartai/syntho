@@ -1,13 +1,12 @@
 from contextlib import asynccontextmanager
 import logging
-import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import datasets, generate, reports
-from app.routers import api_keys, webhooks
+from app.routers import api_keys, billing, notifications, webhooks
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,14 +17,14 @@ logger = logging.getLogger("syntho")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    required = [
-        "SUPABASE_URL",
-        "SUPABASE_SERVICE_KEY",
-        "SUPABASE_JWT_SECRET",
-        "MODAL_API_URL",
-        "FRONTEND_URL",
-    ]
-    missing = [v for v in required if not os.getenv(v)]
+    required_settings = {
+        "SUPABASE_URL": settings.SUPABASE_URL,
+        "SUPABASE_SERVICE_KEY": settings.SUPABASE_SERVICE_KEY,
+        "SUPABASE_JWT_SECRET": settings.SUPABASE_JWT_SECRET,
+        "MODAL_API_URL": settings.MODAL_API_URL,
+        "FRONTEND_URL": settings.FRONTEND_URL,
+    }
+    missing = [name for name, value in required_settings.items() if not value]
     if missing:
         raise RuntimeError(f"Missing required env vars: {missing}")
 
@@ -63,6 +62,8 @@ app.include_router(datasets.router, prefix="/api/v1")
 app.include_router(generate.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(api_keys.router, prefix="/api/v1")
+app.include_router(billing.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 
 

@@ -122,14 +122,20 @@ def _column_stats(series: pd.Series, detected_type: str) -> dict[str, Any]:
     return {}
 
 
-def _load_dataframe(file_bytes: bytes, file_type: str) -> pd.DataFrame:
+def _load_dataframe(file_bytes: bytes, file_type: str, filename: str | None = None) -> pd.DataFrame:
     normalized_type = (file_type or "").lower()
+    normalized_name = (filename or "").lower()
     buffer = BytesIO(file_bytes)
 
-    if "csv" in normalized_type:
+    if "csv" in normalized_type or normalized_name.endswith(".csv"):
         return pd.read_csv(buffer)
 
-    if "spreadsheet" in normalized_type or normalized_type.endswith("xlsx") or "excel" in normalized_type:
+    if (
+        "spreadsheet" in normalized_type
+        or normalized_type.endswith("xlsx")
+        or ("excel" in normalized_type and normalized_name.endswith(".xlsx"))
+        or normalized_name.endswith(".xlsx")
+    ):
         return pd.read_excel(buffer)
 
     if "json" in normalized_type:
@@ -145,13 +151,13 @@ def _load_dataframe(file_bytes: bytes, file_type: str) -> pd.DataFrame:
     raise SchemaDetectionError(f"Unsupported file format: {file_type}")
 
 
-def detect_schema(file_bytes: bytes, file_type: str) -> dict[str, Any]:
+def detect_schema(file_bytes: bytes, file_type: str, filename: str | None = None) -> dict[str, Any]:
     """Detect schema metadata from CSV, Excel, JSON, and Parquet files."""
     if not file_bytes:
         raise SchemaDetectionError("File is empty.")
 
     try:
-        df = _load_dataframe(file_bytes=file_bytes, file_type=file_type)
+        df = _load_dataframe(file_bytes=file_bytes, file_type=file_type, filename=filename)
     except SchemaDetectionError:
         raise
     except Exception as exc:

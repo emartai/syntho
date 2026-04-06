@@ -1,8 +1,8 @@
+import mimetypes
 import os
 import re
 import uuid
 
-import magic
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.middleware.auth import get_current_user
@@ -16,6 +16,7 @@ ALLOWED_EXTENSIONS = {".csv", ".json", ".parquet", ".xlsx"}
 ALLOWED_MIME_TYPES = {
     "text/csv",
     "text/plain",
+    "application/vnd.ms-excel",
     "application/json",
     "application/vnd.apache.parquet",
     "application/octet-stream",  # some parquet uploads
@@ -25,6 +26,30 @@ ALLOWED_MIME_TYPES = {
 
 FREE_MAX_FILE_SIZE = 50 * 1024 * 1024
 PAID_MAX_FILE_SIZE = 500 * 1024 * 1024
+
+try:
+    import magic  # type: ignore
+except ImportError:
+    magic = None
+
+
+def detect_mime_type(file_bytes: bytes, filename: str, declared_content_type: str | None) -> str:
+    if magic is not None:
+        try:
+            detected = magic.from_buffer(file_bytes, mime=True)
+            if detected:
+                return detected
+        except Exception:
+            pass
+
+    guessed, _ = mimetypes.guess_type(filename)
+    if guessed:
+        return guessed
+
+    if declared_content_type:
+        return declared_content_type
+
+    return "application/octet-stream"
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -61,7 +86,7 @@ async def upload_dataset(
         limit_mb = 50 if plan == "free" else 500
         raise HTTPException(status_code=413, detail=f"File exceeds {limit_mb}MB limit for your plan")
 
-    detected_mime = magic.from_buffer(file_bytes, mime=True)
+    detected_mime = detect_mime_type(file_bytes, filename, file.content_type)
     if detected_mime not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported MIME type: {detected_mime}")
 
@@ -78,7 +103,7 @@ async def upload_dataset(
             content_type=detected_mime,
         )
 
-        schema_info = detect_schema(file_bytes, detected_mime)
+        schema_info = detect_schema(file_bytes, detected_mime, filename=filename)
 
         dataset_data = {
             "id": dataset_id,
@@ -137,9 +162,67 @@ async def get_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
         .limit(1)
         .execute()
     )
-    if not response.data:
+    if response.data:
+        dataset = response.data[0]
+        synthetic_versions = (
+            supabase.table("synthetic_datasets")
+            .select("*")
+            .eq("original_dataset_id", dataset_id)
+            .eq("user_id", user["id"])
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return {
+            **dataset,
+            "type": "original",
+            "synthetic_versions": synthetic_versions.data or [],
+        }
+
+    synthetic_response = (
+        supabase.table("synthetic_datasets")
+        .select("*")
+        .eq("id", dataset_id)
+        .eq("user_id", user["id"])
+        .limit(1)
+        .execute()
+    )
+    if not synthetic_response.data:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    return response.data[0]
+
+    synthetic_dataset = synthetic_response.data[0]
+
+    original_dataset_resp = (
+        supabase.table("datasets")
+        .select("id,name,file_type,row_count,column_count,created_at")
+        .eq("id", synthetic_dataset["original_dataset_id"])
+        .eq("user_id", user["id"])
+        .limit(1)
+        .execute()
+    )
+
+    def latest(table: str) -> dict | None:
+        try:
+            report = (
+                supabase.table(table)
+                .select("*")
+                .eq("synthetic_dataset_id", dataset_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return report.data[0] if report.data else None
+        except Exception:
+            return None
+
+    return {
+        **synthetic_dataset,
+        "type": "synthetic",
+        "original_dataset": original_dataset_resp.data[0] if original_dataset_resp.data else None,
+        "trust_score": latest("trust_scores"),
+        "privacy_score": latest("privacy_scores"),
+        "quality_report": latest("quality_reports"),
+        "compliance_report": latest("compliance_reports"),
+    }
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -164,3 +247,22 @@ async def delete_dataset(dataset_id: str, user: dict = Depends(get_current_user)
 
     supabase.table("datasets").delete().eq("id", dataset_id).execute()
     return None
+
+
+@router.get("/{dataset_id}/download")
+async def download_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
+    supabase = get_supabase()
+    response = (
+        supabase.table("datasets")
+        .select("id,file_path,name")
+        .eq("id", dataset_id)
+        .eq("user_id", user["id"])
+        .limit(1)
+        .execute()
+    )
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    dataset = response.data[0]
+    signed_url = storage_service.get_signed_url("datasets", dataset["file_path"], expires_in=300)
+    return {"download_url": signed_url, "name": dataset.get("name")}

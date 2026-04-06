@@ -18,7 +18,15 @@ def _fetch_profile(user_id: str) -> dict:
     return response.data[0]
 
 
-def enforce_generation_quota(user_id: str, dataset_row_count: int) -> dict:
+def get_user_plan(user_id: str) -> dict:
+    return _fetch_profile(user_id)
+
+
+def enforce_generation_quota(
+    user_id: str,
+    dataset_row_count: int,
+    method: str | None = None,
+) -> dict:
     profile = _fetch_profile(user_id)
     plan = profile.get("plan", "free")
     jobs_used = profile.get("jobs_used_this_month", 0)
@@ -39,6 +47,16 @@ def enforce_generation_quota(user_id: str, dataset_row_count: int) -> dict:
             detail={
                 "error": "free_limit_reached",
                 "message": f"Free plan supports up to {settings.FREE_ROW_CAP:,} rows per dataset.",
+                "upgrade_url": "/settings/billing",
+            },
+        )
+
+    if plan == "free" and method == "ctgan":
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "plan_upgrade_required",
+                "message": "CTGAN requires the Pro plan.",
                 "upgrade_url": "/settings/billing",
             },
         )

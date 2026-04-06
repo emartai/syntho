@@ -88,7 +88,7 @@ export default function UploadPage() {
     onSuccess: (data) => {
       setUploadedData(data);
       toast.success('Dataset uploaded successfully!', {
-        description: `${data?.name ?? datasetName || 'Dataset'} is ready for synthetic generation.`,
+        description: `${data?.name ?? datasetName ?? 'Dataset'} is ready for synthetic generation.`,
       });
     },
     onError: (error: any) => {
@@ -247,7 +247,7 @@ export default function UploadPage() {
       ) : (
         <SchemaPreview
           datasetId={uploadedData?.id ?? uploadedData?.dataset_id ?? ''}
-          datasetName={uploadedData?.name ?? datasetName || 'Dataset'}
+          datasetName={uploadedData?.name ?? datasetName ?? 'Dataset'}
           schema={(uploadedData?.schema?.columns ?? uploadedData?.schema ?? []).map((c: any) => ({
             name: c?.name ?? '',
             type: c?.data_type ?? c?.type ?? 'text',

@@ -7,6 +7,7 @@ import { Info, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { JobProgress } from '@/components/shared/JobProgress';
+import { UpgradeModal } from '@/components/shared/UpgradeModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,8 @@ export default function GenerateConfigPage() {
   const [epochs, setEpochs] = useState(300);
   const [batchSize, setBatchSize] = useState(500);
   const [syntheticDatasetId, setSyntheticDatasetId] = useState<string | undefined>();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradeDescription, setUpgradeDescription] = useState('This feature requires a paid plan.');
 
   const datasetQuery = useQuery({
     queryKey: ['dataset', datasetId],
@@ -45,7 +48,10 @@ export default function GenerateConfigPage() {
   });
 
   const inferredRows = useMemo(() => datasetQuery.data?.row_count ?? 0, [datasetQuery.data]);
-  const estimatedMinutes = useMemo(() => estimateCtganMinutes(Number(numRows || inferredRows), epochs), [numRows, inferredRows, epochs]);
+  const estimatedMinutes = useMemo(
+    () => estimateCtganMinutes(Number(numRows || inferredRows), epochs),
+    [numRows, inferredRows, epochs]
+  );
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -74,10 +80,13 @@ export default function GenerateConfigPage() {
         toast.error('ML service unavailable', {
           description: 'The ML service is temporarily unavailable. Please try again in a few minutes.',
         });
-      } else if (detail?.toLowerCase().includes('gpu') || detail?.toLowerCase().includes('quota')) {
+      } else if (detail?.toLowerCase?.().includes('gpu') || detail?.toLowerCase?.().includes('quota')) {
         toast.error('GPU quota exceeded', {
           description: 'The ML service GPU quota has been reached. Please try again later or contact support.',
         });
+      } else if (status === 402) {
+        setUpgradeDescription(typeof detail === 'string' ? detail : 'Upgrade your plan to continue with this action.');
+        setUpgradeOpen(true);
       } else if (status === 504 || error?.code === 'ECONNABORTED') {
         toast.error('Request timed out', {
           description: 'The ML service took too long to respond. Please try again.',
@@ -136,6 +145,13 @@ export default function GenerateConfigPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      <UpgradeModal
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        title="Plan upgrade required"
+        description={upgradeDescription}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle>Generate Synthetic Dataset</CardTitle>
@@ -150,7 +166,7 @@ export default function GenerateConfigPage() {
               {schemaColumns.map((column: any) => (
                 <div key={column.name} className="rounded-md border border-border px-3 py-2">
                   <span className="text-text">{column.name}</span>
-                  <span className="text-text-2"> · {column.data_type}</span>
+                  <span className="text-text-2"> {' · '}{column.data_type}</span>
                 </div>
               ))}
             </div>
@@ -199,7 +215,7 @@ export default function GenerateConfigPage() {
             <div className="space-y-4 rounded-lg border border-border p-4">
               <div className="flex items-start gap-2 rounded-md border border-[rgba(6,182,212,0.25)] bg-[rgba(6,182,212,0.10)] p-3 text-sm text-text">
                 <Info className="h-4 w-4 mt-0.5 text-cyan-400" />
-                <span>CTGAN uses GPU acceleration — typical job takes 5–15 minutes.</span>
+                <span>CTGAN uses GPU acceleration and typically takes 5-15 minutes.</span>
               </div>
 
               <div className="space-y-2">

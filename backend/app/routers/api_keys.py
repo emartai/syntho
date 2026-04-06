@@ -32,6 +32,28 @@ async def create_api_key(body: dict, user: dict = Depends(get_current_user)):
     name = (body.get("name") or "Default Key").strip()
     scopes = body.get("scopes") or ["read", "generate"]
     expires_at = body.get("expires_at")
+    allowed_scopes = {"read", "generate"}
+    if any(scope not in allowed_scopes for scope in scopes):
+        raise HTTPException(status_code=400, detail="Invalid API key scopes")
+
+    supabase = get_supabase()
+    profile = (
+        supabase.table("profiles")
+        .select("plan")
+        .eq("id", user["id"])
+        .limit(1)
+        .execute()
+    )
+    plan = profile.data[0].get("plan", "free") if profile.data else "free"
+    if plan == "free":
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "plan_upgrade_required",
+                "message": "API keys are available on Pro and Growth plans.",
+                "upgrade_url": "/settings/billing",
+            },
+        )
 
     raw = f"sk_live_{secrets.token_urlsafe(32)}"
     key_prefix = raw[:12]
@@ -48,7 +70,6 @@ async def create_api_key(body: dict, user: dict = Depends(get_current_user)):
     if expires_at:
         payload["expires_at"] = expires_at
 
-    supabase = get_supabase()
     inserted = supabase.table("api_keys").insert(payload).execute()
     if not inserted.data:
         raise HTTPException(status_code=500, detail="Failed to create API key")

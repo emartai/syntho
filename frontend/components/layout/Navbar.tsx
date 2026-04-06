@@ -138,15 +138,6 @@ export function Navbar() {
                   ))
                 )}
               </div>
-              {notifications.length > 10 && (
-                <Link
-                  href="/notifications"
-                  onClick={() => setShowNotifications(false)}
-                  className="block px-4 py-3 text-center text-sm text-[#a78bfa] hover:text-[#c4b5fd] border-t border-[rgba(167,139,250,0.10)]"
-                >
-                  View all notifications
-                </Link>
-              )}
             </div>
           )}
         </div>
@@ -187,12 +178,12 @@ export function Navbar() {
               }}
             >
               <Link
-                href="/profile"
+                href="/dashboard"
                 className="flex items-center gap-3 px-4 py-2 text-sm text-[rgba(241,240,255,0.65)] hover:bg-[rgba(255,255,255,0.07)] transition-colors"
                 onClick={() => setShowDropdown(false)}
               >
                 <User className="w-4 h-4" />
-                Profile
+                Dashboard
               </Link>
               <Link
                 href="/settings/billing"

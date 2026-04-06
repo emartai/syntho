@@ -5,6 +5,7 @@ import { Navbar } from '@/components/layout/Navbar';
 import { AuroraBackground } from '@/components/layout/AuroraBackground';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { OfflineBanner } from '@/components/shared/OfflineBanner';
 
 export default async function DashboardLayout({
   children,
@@ -28,6 +29,7 @@ export default async function DashboardLayout({
           <div className="relative z-10 flex">
             <Sidebar />
             <div className="flex-1 ml-20 md:ml-56">
+              <OfflineBanner />
               <Navbar />
               <main className="p-4 md:p-6 pt-16 md:pt-6">{children}</main>
             </div>

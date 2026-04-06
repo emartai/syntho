@@ -60,7 +60,8 @@ export function useJobProgress(syntheticDatasetId?: string) {
         .from('synthetic_datasets')
         .select('*')
         .eq('id', syntheticDatasetId)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (error) {
         setState(prev => ({ ...prev, error: error.message }));

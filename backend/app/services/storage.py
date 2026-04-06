@@ -37,8 +37,17 @@ class StorageService:
         response = supabase.storage.from_(bucket).create_signed_url(
             path=path, expires_in=expires_in
         )
-        if isinstance(response, dict) and "signedURL" in response:
-            return response["signedURL"]
+        if isinstance(response, dict):
+            if "signedURL" in response:
+                return response["signedURL"]
+            if "signedUrl" in response:
+                return response["signedUrl"]
+            if isinstance(response.get("data"), dict):
+                data = response["data"]
+                if "signedURL" in data:
+                    return data["signedURL"]
+                if "signedUrl" in data:
+                    return data["signedUrl"]
         raise Exception("Failed to generate signed URL")
 
     def delete_file(self, bucket: str, path: str) -> bool:

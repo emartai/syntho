@@ -1,5 +1,6 @@
 import io
 import os
+import secrets
 
 import modal
 from fastapi import Header, HTTPException
@@ -84,11 +85,11 @@ async def run_job(payload: dict, x_api_secret: str = Header(default="")):
     if not expected_secret:
         raise HTTPException(status_code=500, detail="Server secret not configured")
 
-    provided_secret = x_api_secret or payload.get("api_secret")
-    if provided_secret != expected_secret:
+    provided_secret = x_api_secret or payload.get("api_secret", "")
+    if not secrets.compare_digest(provided_secret, expected_secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    required_fields = {"synthetic_dataset_id", "original_file_path", "method", "config", "user_id"}
+    required_fields = {"synthetic_dataset_id", "dataset_file_path", "method", "config", "user_id"}
     missing = [field for field in required_fields if field not in payload]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
@@ -108,7 +109,9 @@ async def generate_synthetic(payload: dict):
     import pandas as pd
     from modal_ml.ctgan_generator import CancelledError
     from modal_ml.utils import (
+        create_notification,
         download_from_storage,
+        latest_record,
         log_job_event,
         supabase_client,
         update_job_progress,
@@ -120,6 +123,7 @@ async def generate_synthetic(payload: dict):
     from modal_ml.compliance_reporter import compliance_reporter
     
     synthetic_dataset_id = payload["synthetic_dataset_id"]
+    user_id = payload["user_id"]
 
     def is_job_cancelled(dataset_id: str) -> bool:
         response = (
@@ -127,10 +131,11 @@ async def generate_synthetic(payload: dict):
             .table("synthetic_datasets")
             .select("status")
             .eq("id", dataset_id)
-            .single()
+            .limit(1)
             .execute()
         )
-        return (response.data or {}).get("status") == "failed"
+        rows = response.data or []
+        return (rows[0] if rows else {}).get("status") == "failed"
 
     def raise_if_cancelled() -> None:
         if is_job_cancelled(synthetic_dataset_id):
@@ -150,12 +155,13 @@ async def generate_synthetic(payload: dict):
         update_running_progress(5, "Job started")
         _log("started", "Synthetic generation started")
 
-        source_bytes = download_from_storage("datasets", payload["original_file_path"])
+        source_path = payload.get("dataset_file_path") or payload.get("original_file_path")
+        source_bytes = download_from_storage("datasets", source_path)
         update_running_progress(20, "Downloaded source dataset")
 
         source_df = _load_source_dataframe(
             source_bytes,
-            payload["original_file_path"],
+            source_path,
             payload.get("original_file_type"),
         )
 
@@ -195,23 +201,111 @@ async def generate_synthetic(payload: dict):
         except Exception as _e:
             _log("warn", f"correlation validator skipped: {_e}")
         try:
-            quality_reporter(synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+            quality_stats = quality_reporter(
+                synthetic_df,
+                {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id, "original_df": source_df},
+            )
+            if quality_stats:
+                latest_quality = latest_record("quality_reports", synthetic_dataset_id) or {}
+                supabase.table("quality_reports").upsert(
+                    {
+                        "synthetic_dataset_id": synthetic_dataset_id,
+                        "correlation_score": latest_quality.get("correlation_score", 0),
+                        "distribution_score": latest_quality.get("distribution_score", 0),
+                        "overall_score": max(
+                            float(latest_quality.get("overall_score") or 0),
+                            float(quality_stats.get("overall_fidelity_score", 0)) * 100,
+                        ),
+                        "column_stats": {
+                            **(latest_quality.get("column_stats") or {}),
+                            **quality_stats,
+                        },
+                        "passed": latest_quality.get("passed", False),
+                    },
+                    on_conflict="synthetic_dataset_id",
+                ).execute()
         except Exception as _e:
             _log("warn", f"quality reporter skipped: {_e}")
         try:
-            compliance_reporter(source_df, synthetic_df, {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id})
+            compliance_reporter(
+                source_df,
+                synthetic_df,
+                {"payload": payload, "synthetic_dataset_id": synthetic_dataset_id, "user_id": user_id},
+            )
         except Exception as _e:
             _log("warn", f"compliance reporter skipped: {_e}")
 
+        privacy_result = latest_record("privacy_scores", synthetic_dataset_id) or {}
+        quality_result = latest_record("quality_reports", synthetic_dataset_id) or {}
+        compliance_result = latest_record("compliance_reports", synthetic_dataset_id) or {}
+
+        privacy_score = float(privacy_result.get("overall_score") or 0)
+        fidelity_score = float(quality_result.get("overall_score") or 0)
+        if compliance_result.get("passed") is True:
+            compliance_score = 100.0
+        elif compliance_result.get("gdpr_passed") or compliance_result.get("hipaa_passed"):
+            compliance_score = 75.0
+        else:
+            compliance_score = 50.0 if compliance_result else 0.0
+
+        composite_score = max(
+            0.0,
+            min(100.0, (privacy_score * 0.40) + (fidelity_score * 0.40) + (compliance_score * 0.20)),
+        )
+        if composite_score >= 90:
+            label = "Excellent"
+        elif composite_score >= 75:
+            label = "Good"
+        elif composite_score >= 60:
+            label = "Fair"
+        else:
+            label = "Needs Improvement"
+
+        try:
+            supabase.table("trust_scores").upsert(
+                {
+                    "synthetic_dataset_id": synthetic_dataset_id,
+                    "composite_score": round(composite_score, 2),
+                    "privacy_weight": 40.0,
+                    "fidelity_weight": 40.0,
+                    "compliance_weight": 20.0,
+                    "label": label,
+                },
+                on_conflict="synthetic_dataset_id",
+            ).execute()
+        except Exception as _e:
+            _log("warn", f"trust score persistence skipped: {_e}")
+
         update_job_progress(synthetic_dataset_id, 100, "completed", "Synthetic generation completed")
         _log("completed", "Synthetic dataset generation completed")
+        create_notification(
+            user_id,
+            "job_complete",
+            "Your synthetic dataset is ready",
+            "Your synthetic dataset, trust score, and compliance report are ready.",
+            f"/datasets/{synthetic_dataset_id}",
+        )
 
     except CancelledError as exc:
         update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))
         _log("cancelled", str(exc))
+        create_notification(
+            user_id,
+            "job_failed",
+            "Generation cancelled",
+            "Your synthetic generation job was cancelled.",
+            f"/generate/{payload.get('original_dataset_id') or ''}",
+        )
         return
 
     except Exception as exc:
         update_job_progress(synthetic_dataset_id, 100, "failed", str(exc))
         _log("failed", str(exc))
+        create_notification(
+            user_id,
+            "job_failed",
+            "Generation failed",
+            "Your synthetic generation job failed. Please review the job details and try again.",
+            f"/generate/{payload.get('original_dataset_id') or ''}",
+        )
         raise

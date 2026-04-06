@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Play, Trash2, Download, FileText, Eye } from 'lucide-react';
+import { Play, Trash2, Download, Eye } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { api, apiClient } from '@/lib/api';
+import { api, downloadOriginalDataset, downloadSynthetic } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface DatasetTableProps {
@@ -46,23 +46,19 @@ function formatFileSize(bytes: number) {
 export function DatasetTable({ datasets, type, onDelete }: DatasetTableProps) {
   const handleDownload = async (id: string) => {
     try {
-      const response = await api.datasets.get(id);
-      const filePath = response.data?.file_path;
-      if (filePath) {
-        const downloadRes = await apiClient.post('/api/v1/datasets/download', { path: filePath });
-        const signedUrl = downloadRes.data?.signedUrl ?? downloadRes.data?.download_url;
-        if (signedUrl) {
-          const link = document.createElement('a');
-          link.href = signedUrl;
-          link.download = response.data?.name ?? `dataset-${id}`;
-          link.setAttribute('target', '_blank');
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          return;
-        }
+      const url = type === 'original' ? await downloadOriginalDataset(id) : await downloadSynthetic(id);
+      if (!url) {
+        toast.error('Download not available');
+        return;
       }
-      toast.error('Download not available');
+      const response = await api.datasets.get(id);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = response.data?.name ?? `dataset-${id}`;
+      link.setAttribute('target', '_blank');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error: any) {
       toast.error('Failed to get download link', {
         description: error?.response?.data?.detail || error?.message,

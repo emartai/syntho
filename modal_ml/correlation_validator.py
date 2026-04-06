@@ -23,6 +23,24 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return [_json_safe(v) for v in value.tolist()]
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    return value
+
+
 def _cramers_v(frame: pd.DataFrame, left: str, right: str) -> float:
     contingency = pd.crosstab(frame[left], frame[right])
     if contingency.empty:
@@ -178,8 +196,9 @@ def validate_correlations(
                 "difference": diff_matrix.fillna(0).to_dict() if not diff_matrix.empty else {},
             },
         },
-        "passed": passed,
+        "passed": bool(passed),
     }
+    result = _json_safe(result)
 
     supabase_client().table("quality_reports").upsert(
         {

@@ -86,6 +86,11 @@ export async function deleteDataset(id: string): Promise<void> {
   await http.delete(`/api/v1/datasets/${id}`)
 }
 
+export async function downloadOriginalDataset(id: string): Promise<string> {
+  const { data } = await http.get(`/api/v1/datasets/${id}/download`)
+  return data?.download_url ?? data?.url ?? data
+}
+
 export async function startGeneration(payload: {
   dataset_id: string
   method: 'ctgan' | 'gaussian_copula'
@@ -173,6 +178,21 @@ export const api = {
   reports: {
     getCompliance: (syntheticDatasetId: string) =>
       http.get(`/api/v1/reports/compliance/${syntheticDatasetId}`),
+  },
+  apiKeys: {
+    list: () => http.get('/api/v1/api-keys'),
+    create: (data: { name: string; scopes: string[] }) => http.post('/api/v1/api-keys', data),
+    revoke: (id: string) => http.delete(`/api/v1/api-keys/${id}`),
+  },
+  billing: {
+    status: () => http.get('/api/v1/billing/status'),
+    upgrade: (data: { plan: 'pro' | 'growth'; tx_ref: string; transaction_id?: string | number }) =>
+      http.post('/api/v1/billing/upgrade', data),
+  },
+  notifications: {
+    list: () => http.get('/api/v1/notifications'),
+    markRead: (id: string) => http.patch(`/api/v1/notifications/${id}/read`),
+    markAllRead: () => http.patch('/api/v1/notifications/read-all'),
   },
 }
 

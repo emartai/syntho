@@ -17,13 +17,13 @@ def _build_metadata(df: pd.DataFrame) -> SingleTableMetadata:
     for column in df.columns:
         series = df[column]
         lower_name = column.lower()
-
-        if series.is_unique and series.notna().all() and (
+        is_identifier = series.is_unique and series.notna().all() and (
             lower_name == "id" or lower_name.endswith("_id") or lower_name.endswith("id")
-        ):
-            metadata.update_column(column_name=column, sdtype="id")
+        )
 
-        if pd.api.types.is_bool_dtype(series):
+        if is_identifier:
+            metadata.update_column(column_name=column, sdtype="id")
+        elif pd.api.types.is_bool_dtype(series):
             metadata.update_column(column_name=column, sdtype="boolean")
         elif pd.api.types.is_datetime64_any_dtype(series):
             metadata.update_column(column_name=column, sdtype="datetime")

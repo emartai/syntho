@@ -149,14 +149,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_datasets_updated_at ON datasets;
 CREATE TRIGGER update_datasets_updated_at
   BEFORE UPDATE ON datasets
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_synthetic_datasets_updated_at ON synthetic_datasets;
 CREATE TRIGGER update_synthetic_datasets_updated_at
   BEFORE UPDATE ON synthetic_datasets
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

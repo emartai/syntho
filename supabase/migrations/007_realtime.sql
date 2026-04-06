@@ -4,11 +4,23 @@
 -- Run in Supabase SQL Editor. Also enable via Dashboard → Database → Replication.
 -- ══════════════════════════════════════════════════════════════════════════════
 
--- synthetic_datasets: drives the live progress bar in the generate page
-ALTER PUBLICATION supabase_realtime ADD TABLE synthetic_datasets;
+DO $$
+BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE synthetic_datasets;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END;
 
--- notifications: drives the notification bell badge in the dashboard navbar
-ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END;
 
--- job_logs: optional — streams log lines to the generate page terminal view
-ALTER PUBLICATION supabase_realtime ADD TABLE job_logs;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE job_logs;
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END;
+END $$;
