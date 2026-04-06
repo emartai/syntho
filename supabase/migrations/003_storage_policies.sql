@@ -1,11 +1,22 @@
 -- ══════════════════════════════════════════════════════════════════════════════
 -- 003_storage_policies.sql
--- Storage bucket policies — all buckets are PRIVATE
--- Run this in Supabase SQL Editor after creating the three buckets:
---   datasets, synthetic, reports (all set to private)
+-- Storage buckets + policies (private buckets)
 -- ══════════════════════════════════════════════════════════════════════════════
 
--- ── datasets bucket ───────────────────────────────────────────────────────────
+INSERT INTO storage.buckets (id, name, public)
+VALUES
+  ('datasets', 'datasets', false),
+  ('synthetic', 'synthetic', false),
+  ('reports', 'reports', false)
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- datasets
+DROP POLICY IF EXISTS "Users can upload own datasets" ON storage.objects;
+DROP POLICY IF EXISTS "Users can view own dataset files" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own dataset files" ON storage.objects;
+
 CREATE POLICY "Users can upload own datasets"
   ON storage.objects FOR INSERT
   WITH CHECK (
@@ -27,17 +38,24 @@ CREATE POLICY "Users can delete own dataset files"
     AND auth.uid()::text = (storage.foldername(name))[1]
   );
 
--- ── synthetic bucket ──────────────────────────────────────────────────────────
+-- synthetic
+DROP POLICY IF EXISTS "Users can upload own synthetic files" ON storage.objects;
+DROP POLICY IF EXISTS "Users can view own synthetic files" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own synthetic files" ON storage.objects;
+
+CREATE POLICY "Users can upload own synthetic files"
+  ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'synthetic'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
 CREATE POLICY "Users can view own synthetic files"
   ON storage.objects FOR SELECT
   USING (
     bucket_id = 'synthetic'
     AND auth.uid()::text = (storage.foldername(name))[1]
   );
-
-CREATE POLICY "Service role can upload synthetic files"
-  ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'synthetic');
 
 CREATE POLICY "Users can delete own synthetic files"
   ON storage.objects FOR DELETE
@@ -46,7 +64,18 @@ CREATE POLICY "Users can delete own synthetic files"
     AND auth.uid()::text = (storage.foldername(name))[1]
   );
 
--- ── reports bucket ────────────────────────────────────────────────────────────
+-- reports
+DROP POLICY IF EXISTS "Users can upload own report files" ON storage.objects;
+DROP POLICY IF EXISTS "Users can view own report files" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own report files" ON storage.objects;
+
+CREATE POLICY "Users can upload own report files"
+  ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'reports'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
 CREATE POLICY "Users can view own report files"
   ON storage.objects FOR SELECT
   USING (
@@ -54,6 +83,9 @@ CREATE POLICY "Users can view own report files"
     AND auth.uid()::text = (storage.foldername(name))[1]
   );
 
-CREATE POLICY "Service role can upload report files"
-  ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'reports');
+CREATE POLICY "Users can delete own report files"
+  ON storage.objects FOR DELETE
+  USING (
+    bucket_id = 'reports'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );

@@ -49,9 +49,9 @@ export interface TrustScore {
   id: string;
   synthetic_dataset_id: string;
   composite_score: number;
-  privacy_score: number;
-  fidelity_score: number;
-  compliance_score: number;
+  privacy_weight: number;
+  fidelity_weight: number;
+  compliance_weight: number;
   label: 'Excellent' | 'Good' | 'Fair' | 'Needs Improvement';
   created_at: string;
 }
@@ -108,8 +108,8 @@ export interface Notification {
   user_id: string;
   type: string;
   title: string;
-  body: string;
-  data?: Record<string, unknown>;
+  message: string;
+  link?: string;
   read: boolean;
   created_at: string;
 }

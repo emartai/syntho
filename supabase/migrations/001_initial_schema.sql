@@ -91,6 +91,19 @@ CREATE TABLE IF NOT EXISTS compliance_reports (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ── trust_scores ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS trust_scores (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  synthetic_dataset_id UUID NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE UNIQUE,
+  composite_score      NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (composite_score >= 0 AND composite_score <= 100),
+  privacy_weight       NUMERIC(5,2) NOT NULL DEFAULT 40.00,
+  fidelity_weight      NUMERIC(5,2) NOT NULL DEFAULT 40.00,
+  compliance_weight    NUMERIC(5,2) NOT NULL DEFAULT 20.00,
+  label                TEXT NOT NULL DEFAULT 'Needs Improvement'
+                         CHECK (label IN ('Excellent', 'Good', 'Fair', 'Needs Improvement')),
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ── api_keys (Launch feature — Pro/Growth plans) ──────────────────────────────
 CREATE TABLE IF NOT EXISTS api_keys (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -152,12 +165,14 @@ CREATE TRIGGER update_synthetic_datasets_updated_at
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO profiles (id, email, full_name, avatar_url)
+  INSERT INTO profiles (id, email, full_name, avatar_url, plan, jobs_used_this_month)
   VALUES (
     NEW.id,
     NEW.email,
     NEW.raw_user_meta_data->>'full_name',
-    NEW.raw_user_meta_data->>'avatar_url'
+    NEW.raw_user_meta_data->>'avatar_url',
+    'free',
+    0
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;

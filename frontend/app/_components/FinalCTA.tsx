@@ -1,48 +1,52 @@
-import Link from 'next/link';
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export function FinalCTA() {
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = email ? `?email=${encodeURIComponent(email)}` : '';
+    router.push(`/login${query}`);
+  };
+
   return (
     <section className="py-32 relative overflow-hidden">
-      {/* Aurora Blob Background */}
-      <div
-        className="absolute inset-0 flex items-center justify-center pointer-events-none"
-        aria-hidden
-      >
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden>
         <div
           className="w-[800px] h-[800px] rounded-full opacity-20 blur-3xl"
-          style={{
-            background: 'radial-gradient(ellipse at center, #6366f1 0%, transparent 70%)',
-          }}
+          style={{ background: 'radial-gradient(ellipse at center, #6366f1 0%, transparent 70%)' }}
         />
       </div>
 
-      {/* Content */}
       <div className="relative z-10 text-center max-w-4xl mx-auto px-6">
         <h2 className="font-display text-5xl md:text-6xl font-bold mb-4">
-          <span className="block text-white">Your data deserves</span>
-          <span
-            className="block mt-2"
-            style={{
-              background: 'linear-gradient(135deg, #c4b5fd, #67e8f9)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            a safer twin.
-          </span>
+          <span className="block text-white">Start generating in 5 minutes</span>
         </h2>
 
         <p className="text-white/50 text-lg mt-4 mb-10">
-          Generate your first synthetic dataset free. No credit card required.
+          Enter your email to continue to login and create your first synthetic dataset.
         </p>
 
-        <Link
-          href="/login"
-          className="inline-block px-10 py-5 text-lg font-semibold text-white rounded-full bg-gradient-to-r from-[#6366f1] to-[#22d3ee] hover:scale-105 hover:brightness-110 transition-all"
-          style={{ boxShadow: '0 0 50px rgba(99, 102, 241, 0.4)' }}
-        >
-          Generate Free Dataset →
-        </Link>
+        <form onSubmit={onSubmit} className="mx-auto max-w-xl flex flex-col sm:flex-row gap-3">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            className="w-full rounded-full border border-white/15 bg-white/5 px-5 py-4 text-white placeholder:text-white/35 outline-none focus:border-[#a78bfa]"
+            required
+          />
+          <button
+            type="submit"
+            className="px-8 py-4 text-base font-semibold text-white rounded-full bg-gradient-to-r from-[#6366f1] to-[#22d3ee] hover:brightness-110 transition-all"
+          >
+            Continue
+          </button>
+        </form>
       </div>
     </section>
   );

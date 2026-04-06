@@ -4,47 +4,12 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from app.config import settings
+from app.dependencies.quota import enforce_generation_quota
 from app.middleware.auth import get_current_user
 from app.services.supabase import get_supabase
 from app.services.storage import storage_service
 
 router = APIRouter(tags=["generate"])
-
-
-async def check_quota(user_id: str, supabase):
-    """Check and enforce freemium quota limits."""
-    try:
-        profile_resp = (
-            supabase.table("profiles")
-            .select("*")
-            .eq("id", user_id)
-            .limit(1)
-            .execute()
-        )
-        profile = profile_resp.data[0] if profile_resp.data else None
-    except Exception:
-        profile = None
-
-    if not profile:
-        profile = {
-            "plan": "free",
-            "jobs_used_this_month": 0,
-        }
-
-    plan = profile.get("plan", "free")
-    jobs_used = profile.get("jobs_used_this_month", 0)
-
-    if plan == "free" and jobs_used >= settings.FREE_JOBS_QUOTA:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "error": "quota_exceeded",
-                "message": f"You've used all {settings.FREE_JOBS_QUOTA} free jobs this month. Upgrade to Pro for unlimited jobs.",
-                "upgrade_url": "/settings/billing",
-            },
-        )
-
-    return profile
 
 
 async def trigger_modal_generation(
@@ -107,13 +72,10 @@ async def create_generation_job(
 
     supabase = get_supabase()
 
-    # Check quota
-    await check_quota(user_id, supabase)
-
     # Verify dataset ownership and status
     dataset_resp = (
         supabase.table("datasets")
-        .select("id,file_path,file_type,user_id,status")
+        .select("id,file_path,file_type,user_id,status,row_count")
         .eq("id", dataset_id)
         .eq("user_id", user_id)
         .limit(1)
@@ -124,6 +86,9 @@ async def create_generation_job(
         raise HTTPException(status_code=404, detail="Dataset not found")
     if dataset.get("status") != "ready":
         raise HTTPException(status_code=400, detail="Dataset is not ready")
+    
+    # Check quota and free row cap
+    enforce_generation_quota(user_id=user_id, dataset_row_count=dataset.get("row_count", 0))
 
     # Check for already-running job
     running_check = (
@@ -151,7 +116,6 @@ async def create_generation_job(
             "generation_method": method,
             "status": "pending",
             "progress": 0,
-            "current_step": "Queued",
         }
     ).execute()
 
@@ -162,23 +126,6 @@ async def create_generation_job(
         )
     except Exception:
         file_url = ""
-
-    # Increment quota counter
-    try:
-        current = (
-            supabase.table("profiles")
-            .select("jobs_used_this_month")
-            .eq("id", user_id)
-            .limit(1)
-            .execute()
-        )
-        if current.data:
-            new_count = current.data[0].get("jobs_used_this_month", 0) + 1
-            supabase.table("profiles").update(
-                {"jobs_used_this_month": new_count}
-            ).eq("id", user_id).execute()
-    except Exception:
-        pass
 
     # Fire background task
     background_tasks.add_task(

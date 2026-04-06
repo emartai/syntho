@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, Settings, User, LogOut, CheckCheck } from 'lucide-react';
+import { Bell, CreditCard, User, LogOut, CheckCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotifications } from '@/hooks/useNotifications';
 import { usePathname } from 'next/navigation';
@@ -195,12 +195,12 @@ export function Navbar() {
                 Profile
               </Link>
               <Link
-                href="/settings"
+                href="/settings/billing"
                 className="flex items-center gap-3 px-4 py-2 text-sm text-[rgba(241,240,255,0.65)] hover:bg-[rgba(255,255,255,0.07)] transition-colors"
                 onClick={() => setShowDropdown(false)}
               >
-                <Settings className="w-4 h-4" />
-                Settings
+                <CreditCard className="w-4 h-4" />
+                Billing
               </Link>
               <hr className="my-1 border-[rgba(167,139,250,0.10)]" />
               <button
