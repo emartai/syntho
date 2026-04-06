@@ -1,20 +1,13 @@
 from __future__ import annotations
 
 import itertools
-import os
-from datetime import datetime
 from typing import Any
 
 import pandas as pd
-from pandas.api.types import (
-    is_bool_dtype,
-    is_categorical_dtype,
-    is_datetime64_any_dtype,
-    is_numeric_dtype,
-    is_object_dtype,
-)
+from pandas.api.types import is_categorical_dtype, is_object_dtype
 from presidio_analyzer import AnalyzerEngine
-from supabase import create_client
+
+from modal_ml.utils import supabase_client, update_job_progress
 
 PII_ENTITIES = [
     "PERSON",
@@ -26,68 +19,19 @@ PII_ENTITIES = [
     "DATE_TIME",
     "IP_ADDRESS",
     "URL",
-    "NRP",
 ]
 
 
-def _sample_series(series: pd.Series, sample_size: int = 50) -> pd.Series:
-    non_null = series.dropna()
-    if non_null.empty:
-        return non_null
-
-    values = non_null.astype(str)
-    n = min(sample_size, len(values))
-    return values.sample(n=n, random_state=42) if len(values) > n else values
-
-
-def _is_text_column(series: pd.Series) -> bool:
+def _is_text_like(series: pd.Series) -> bool:
     return bool(is_object_dtype(series) or is_categorical_dtype(series))
 
 
-def _quasi_identifier_columns(df: pd.DataFrame, max_columns: int = 8) -> list[str]:
-    eligible: list[str] = []
-    total_rows = max(len(df), 1)
-
-    for col in df.columns:
-        series = df[col]
-        if series.isna().all():
-            continue
-
-        cardinality = int(series.nunique(dropna=True))
-        if cardinality <= 1:
-            continue
-
-        if is_bool_dtype(series):
-            eligible.append(col)
-            continue
-
-        if is_numeric_dtype(series) or is_datetime64_any_dtype(series) or _is_text_column(series):
-            cardinality_ratio = cardinality / total_rows
-            if cardinality_ratio < 0.98:
-                eligible.append(col)
-
-    return eligible[:max_columns]
-
-
-def _uniqueness_ratio(df: pd.DataFrame, columns: tuple[str, ...]) -> float:
-    subset = df[list(columns)].dropna()
-    if subset.empty:
-        return 0.0
-
-    group_sizes = subset.groupby(list(columns), dropna=False).size()
-    # Number of rows that appear in groups of size 1 divided by total rows.
-    unique_row_count = int(group_sizes[group_sizes == 1].sum())
-    return unique_row_count / len(subset)
-
-
-def _row_overlap_ratio(original_df: pd.DataFrame, synthetic_df: pd.DataFrame, columns: tuple[str, ...]) -> float:
-    syn_subset = synthetic_df[list(columns)].dropna()
-    orig_subset = original_df[list(columns)].dropna()
-    if syn_subset.empty or orig_subset.empty:
-        return 0.0
-
-    shared_rows = syn_subset.merge(orig_subset.drop_duplicates(), on=list(columns), how="inner")
-    return len(shared_rows) / len(syn_subset)
+def _sample_series(series: pd.Series, sample_size: int = 50) -> pd.Series:
+    non_null = series.dropna().astype(str)
+    if non_null.empty:
+        return non_null
+    n = min(sample_size, len(non_null))
+    return non_null.sample(n=n, random_state=42) if len(non_null) > n else non_null
 
 
 def _risk_level(score: int) -> str:
@@ -100,6 +44,32 @@ def _risk_level(score: int) -> str:
     return "critical"
 
 
+def _row_overlap_exact_match(
+    original_df: pd.DataFrame,
+    synthetic_df: pd.DataFrame,
+    key_columns: list[str],
+    sample_n: int = 200,
+) -> float:
+    if not key_columns:
+        return 0.0
+
+    syn_subset = synthetic_df[key_columns].dropna()
+    orig_subset = original_df[key_columns].dropna()
+    if syn_subset.empty or orig_subset.empty:
+        return 0.0
+
+    sampled = syn_subset.sample(n=min(sample_n, len(syn_subset)), random_state=42)
+    original_keys = set(tuple(row) for row in orig_subset.itertuples(index=False, name=None))
+
+    matched = 0
+    for row in sampled.itertuples(index=False, name=None):
+        if tuple(row) in original_keys:
+            matched += 1
+
+    denominator = min(sample_n, len(sampled))
+    return matched / denominator if denominator else 0.0
+
+
 def score_privacy(
     original_df: pd.DataFrame,
     synthetic_df: pd.DataFrame,
@@ -107,7 +77,8 @@ def score_privacy(
 ) -> dict[str, Any]:
     analyzer = AnalyzerEngine()
 
-    text_columns = [col for col in synthetic_df.columns if _is_text_column(synthetic_df[col])]
+    # a) PII detection on text/categorical columns
+    text_columns = [col for col in synthetic_df.columns if _is_text_like(synthetic_df[col])]
     pii_detected: dict[str, dict[str, Any]] = {}
 
     for col in text_columns:
@@ -124,8 +95,8 @@ def score_privacy(
                 continue
 
             flagged_rows += 1
-            for item in findings:
-                entity_counts[item.entity_type] = entity_counts.get(item.entity_type, 0) + 1
+            for finding in findings:
+                entity_counts[finding.entity_type] = entity_counts.get(finding.entity_type, 0) + 1
 
         detection_ratio = flagged_rows / len(sample)
         if detection_ratio > 0.10:
@@ -135,89 +106,62 @@ def score_privacy(
                 "entity_counts": entity_counts,
             }
 
-    pii_column_count = len(pii_detected)
+    pii_penalty = -min(60, len(pii_detected) * 20)
 
-    shared_columns = [col for col in synthetic_df.columns if col in original_df.columns]
-    quasi_identifiers = _quasi_identifier_columns(synthetic_df[shared_columns])
+    # b) Singling out risk: combinations up to 3 columns
+    shared_columns = [c for c in synthetic_df.columns if c in original_df.columns]
+    candidate_columns = [c for c in shared_columns if synthetic_df[c].dropna().nunique() > 1][:8]
 
-    singling_out_details: list[dict[str, Any]] = []
-    linkability_details: list[dict[str, Any]] = []
-    high_singling_out = False
-    max_overlap = 0.0
+    max_uniqueness = 0.0
+    max_uniqueness_combo: list[str] = []
 
     for size in (1, 2, 3):
-        for combo in itertools.combinations(quasi_identifiers, size):
-            syn_uniqueness = _uniqueness_ratio(synthetic_df, combo)
-            orig_uniqueness = _uniqueness_ratio(original_df, combo)
-            overlap = _row_overlap_ratio(original_df, synthetic_df, combo)
+        for combo in itertools.combinations(candidate_columns, size):
+            subset = synthetic_df[list(combo)].dropna()
+            if subset.empty:
+                continue
+            uniqueness = subset.drop_duplicates().shape[0] / len(subset)
+            if uniqueness > max_uniqueness:
+                max_uniqueness = uniqueness
+                max_uniqueness_combo = list(combo)
 
-            singling_out_details.append(
-                {
-                    "columns": list(combo),
-                    "synthetic_uniqueness_ratio": round(syn_uniqueness, 4),
-                    "original_uniqueness_ratio": round(orig_uniqueness, 4),
-                }
-            )
-            linkability_details.append(
-                {
-                    "columns": list(combo),
-                    "overlap_ratio": round(overlap, 4),
-                }
-            )
+    singling_out_penalty = -20 if max_uniqueness > 0.15 else 0
 
-            if size == 3 and syn_uniqueness > 0.15:
-                high_singling_out = True
-            max_overlap = max(max_overlap, overlap)
+    # c) Row overlap linkability
+    key_columns = candidate_columns[:3]
+    overlap_pct = _row_overlap_exact_match(original_df, synthetic_df, key_columns, sample_n=200)
+    linkability_penalty = -20 if overlap_pct > 0.05 else 0
 
-    pii_penalty = min(60, pii_column_count * 20)
-    singling_out_penalty = 20 if high_singling_out else 0
-    linkability_penalty = 20 if max_overlap > 0.05 else 0
+    # d) Final score
+    overall_score = max(0, int(round(100 + pii_penalty + singling_out_penalty + linkability_penalty)))
 
-    overall_score = max(0, 100 - pii_penalty - singling_out_penalty - linkability_penalty)
+    # e) Risk level
     risk_level = _risk_level(overall_score)
 
     details = {
-        "pii_risk": {
-            "flagged_columns": pii_column_count,
-            "penalty": pii_penalty,
-        },
-        "singling_out_risk": {
-            "high_risk": high_singling_out,
-            "penalty": singling_out_penalty,
-            "combinations": singling_out_details,
-        },
-        "linkability_risk": {
-            "max_overlap_ratio": round(max_overlap, 4),
-            "penalty": linkability_penalty,
-            "combinations": linkability_details,
-        },
-        "quasi_identifiers": quasi_identifiers,
+        "pii_penalty": pii_penalty,
+        "singling_out_penalty": singling_out_penalty,
+        "linkability_penalty": linkability_penalty,
+        "max_uniqueness": round(max_uniqueness, 4),
+        "max_uniqueness_combo": max_uniqueness_combo,
+        "overlap_pct": round(overlap_pct, 4),
+        "overlap_key_columns": key_columns,
     }
 
+    # f) Save to privacy_scores
     payload = {
         "synthetic_dataset_id": synthetic_dataset_id,
         "overall_score": overall_score,
         "pii_detected": pii_detected,
         "risk_level": risk_level,
-        "singling_out_risk": round(
-            max(
-                (
-                    item["synthetic_uniqueness_ratio"]
-                    for item in singling_out_details
-                    if len(item["columns"]) == 3
-                ),
-                default=0.0,
-            ),
-            4,
-        ),
-        "linkability_risk": round(max_overlap, 4),
         "details": details,
-        "created_at": datetime.utcnow().isoformat(),
     }
+    supabase_client().table("privacy_scores").insert(payload).execute()
 
-    supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
-    supabase.table("privacy_scores").insert(payload).execute()
+    # g) Job progress update
+    update_job_progress(synthetic_dataset_id, 85, "running", "Privacy scoring complete")
 
+    # h) Return result
     return {
         "overall_score": overall_score,
         "risk_level": risk_level,

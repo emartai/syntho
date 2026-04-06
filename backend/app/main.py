@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import datasets, generate, reports
-from app.routers import api_keys, webhooks
+from app.routers import api_keys, billing, notifications, webhooks
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,6 +54,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
+    allow_origin_regex=settings.ALLOWED_ORIGIN_REGEX or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,6 +64,8 @@ app.include_router(datasets.router, prefix="/api/v1")
 app.include_router(generate.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(api_keys.router, prefix="/api/v1")
+app.include_router(billing.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 
 

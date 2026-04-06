@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Loader2, Sparkles, Wand2 } from 'lucide-react';
@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { createClient } from '@/lib/supabase/client';
+import { useOnboarding } from '@/hooks/useOnboarding';
+import { OnboardingOverlay } from '@/components/shared/OnboardingOverlay';
 
 function filenameToDatasetName(fileName: string) {
   return fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
@@ -27,10 +28,9 @@ export default function UploadPage() {
   const [uploadedData, setUploadedData] = useState<any>(null);
   const [datasetName, setDatasetName] = useState('');
   const [description, setDescription] = useState('');
-  const [onboardingVisible, setOnboardingVisible] = useState(true);
-
   const plan = profile?.plan ?? 'free';
-  const showOnboarding = onboardingVisible && (profile?.jobs_used_this_month ?? 0) === 0;
+  const onboarding = useOnboarding();
+  const showOnboarding = onboarding.ready && onboarding.eligible && onboarding.step === 1;
 
   const { data: datasets = [] } = useQuery({
     queryKey: ['datasets-count-upload'],
@@ -41,41 +41,6 @@ export default function UploadPage() {
 
   const isFirstDataset = (datasets?.length ?? 0) === 0;
 
-  useEffect(() => {
-    const dismissed = localStorage.getItem('syntho-onboarding-dismissed') === 'true';
-    if (dismissed) {
-      setOnboardingVisible(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!user || !showOnboarding) return;
-
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`onboarding-complete-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'synthetic_datasets',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const nextStatus = (payload.new as { status?: string })?.status;
-          if (nextStatus === 'completed') {
-            setOnboardingVisible(false);
-            localStorage.setItem('syntho-onboarding-dismissed', 'true');
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [showOnboarding, user]);
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -87,6 +52,7 @@ export default function UploadPage() {
     },
     onSuccess: (data) => {
       setUploadedData(data);
+      onboarding.setOnboardingStep(2);
       toast.success('Dataset uploaded successfully!', {
         description: `${data?.name ?? datasetName || 'Dataset'} is ready for synthetic generation.`,
       });
@@ -258,6 +224,18 @@ export default function UploadPage() {
           columnCount={uploadedData?.column_count ?? 0}
           plan={plan}
           onUploadDifferent={resetUploadFlow}
+        />
+      )}
+
+
+      {showOnboarding && (
+        <OnboardingOverlay
+          step={1}
+          title="Welcome to Syntho. Upload a dataset."
+          description="Start by uploading a real dataset. We'll detect schema automatically and prep synthetic generation."
+          action={isFirstDataset ? { label: 'Load Sample Dataset', onClick: handleLoadSampleDataset } : undefined}
+          onNext={() => onboarding.setOnboardingStep(2)}
+          onSkip={onboarding.dismiss}
         />
       )}
 

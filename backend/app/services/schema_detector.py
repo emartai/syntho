@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import json
+import warnings
 from io import BytesIO
 from typing import Any
 
 import pandas as pd
 from pandas.api.types import (
     is_bool_dtype,
-    is_datetime64_any_dtype,
     is_float_dtype,
     is_integer_dtype,
-    is_numeric_dtype,
     is_object_dtype,
 )
 
 
 TRUE_VALUES = {"true", "t", "yes", "y", "1"}
 FALSE_VALUES = {"false", "f", "no", "n", "0"}
+MAX_COLUMNS = 1000
 
 
 class SchemaDetectionError(Exception):
@@ -25,9 +26,6 @@ class SchemaDetectionError(Exception):
 def _serialize_value(value: Any) -> Any:
     if value is None:
         return None
-
-    if isinstance(value, (list, tuple, dict, set)):
-        return value
 
     try:
         if pd.isna(value):
@@ -56,21 +54,20 @@ def _is_boolean_column(series: pd.Series) -> bool:
         return False
 
     normalized = {str(v).strip().lower() for v in non_null.unique()}
-    if len(normalized) != 2:
+    if len(normalized) > 2:
         return False
 
     return normalized.issubset(TRUE_VALUES.union(FALSE_VALUES))
 
 
 def _is_datetime_column(series: pd.Series) -> bool:
-    if is_datetime64_any_dtype(series):
-        return True
-
     non_null = series.dropna()
     if non_null.empty:
         return False
 
-    converted = pd.to_datetime(non_null, errors="coerce")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        converted = pd.to_datetime(non_null, errors="coerce")
     success_ratio = converted.notna().mean()
     return success_ratio > 0.8
 
@@ -79,7 +76,7 @@ def _detect_column_type(series: pd.Series, unique_count: int, row_count: int) ->
     if _is_boolean_column(series):
         return "boolean"
 
-    if is_numeric_dtype(series) or is_integer_dtype(series) or is_float_dtype(series):
+    if is_integer_dtype(series) or is_float_dtype(series):
         return "numeric"
 
     if _is_datetime_column(series):
@@ -88,9 +85,6 @@ def _detect_column_type(series: pd.Series, unique_count: int, row_count: int) ->
     unique_ratio = (unique_count / row_count) if row_count else 0
     if is_object_dtype(series) and (unique_count < 50 or unique_ratio < 0.05):
         return "categorical"
-
-    if is_object_dtype(series):
-        return "text"
 
     return "text"
 
@@ -109,17 +103,33 @@ def _column_stats(series: pd.Series, detected_type: str) -> dict[str, Any]:
         }
 
     if detected_type == "categorical":
-        value_counts = non_null.value_counts().head(5)
-        top_values = [
-            {"value": _serialize_value(index), "count": int(count)}
-            for index, count in value_counts.items()
-        ]
-        stats: dict[str, Any] = {"top_values": top_values}
-        if not value_counts.empty:
-            stats["most_frequent"] = _serialize_value(value_counts.index[0])
-        return stats
+        value_counts = non_null.astype(str).value_counts().head(3)
+        return {
+            "top_3_values": [
+                {"value": value, "count": int(count)} for value, count in value_counts.items()
+            ]
+        }
 
     return {}
+
+
+def _load_json_dataframe(file_bytes: bytes) -> pd.DataFrame:
+    try:
+        payload = json.loads(file_bytes.decode("utf-8"))
+    except Exception as exc:
+        raise SchemaDetectionError(f"Invalid JSON file: {exc}") from exc
+
+    if isinstance(payload, list):
+        return pd.json_normalize(payload)
+
+    if isinstance(payload, dict):
+        # Common patterns: {"data": [...]}, {"rows": [...]}, nested object
+        for key in ("data", "rows", "items", "results"):
+            if isinstance(payload.get(key), list):
+                return pd.json_normalize(payload[key])
+        return pd.json_normalize(payload)
+
+    raise SchemaDetectionError("JSON payload must be an object or an array")
 
 
 def _load_dataframe(file_bytes: bytes, file_type: str) -> pd.DataFrame:
@@ -129,17 +139,18 @@ def _load_dataframe(file_bytes: bytes, file_type: str) -> pd.DataFrame:
     if "csv" in normalized_type:
         return pd.read_csv(buffer)
 
-    if "spreadsheet" in normalized_type or normalized_type.endswith("xlsx") or "excel" in normalized_type:
+    if (
+        "spreadsheet" in normalized_type
+        or "excel" in normalized_type
+        or normalized_type.endswith("xlsx")
+        or normalized_type == "application/zip"
+    ):
         return pd.read_excel(buffer)
 
     if "json" in normalized_type:
-        parsed = pd.read_json(buffer)
-        if isinstance(parsed, pd.DataFrame):
-            normalized = pd.json_normalize(parsed.to_dict(orient="records"))
-            return normalized
-        return pd.json_normalize(parsed)
+        return _load_json_dataframe(file_bytes)
 
-    if "parquet" in normalized_type:
+    if "parquet" in normalized_type or normalized_type == "application/octet-stream":
         return pd.read_parquet(buffer)
 
     raise SchemaDetectionError(f"Unsupported file format: {file_type}")
@@ -157,8 +168,11 @@ def detect_schema(file_bytes: bytes, file_type: str) -> dict[str, Any]:
     except Exception as exc:
         raise SchemaDetectionError(f"Failed to parse file content: {exc}") from exc
 
-    if df.empty and len(df.columns) == 0:
-        raise SchemaDetectionError("File contains no rows or columns.")
+    if df.shape[1] > MAX_COLUMNS:
+        raise SchemaDetectionError(f"File has too many columns ({df.shape[1]}). Maximum is {MAX_COLUMNS}.")
+
+    if len(df) == 0:
+        raise SchemaDetectionError("File contains 0 rows.")
 
     row_count = len(df)
     columns: list[dict[str, Any]] = []
@@ -186,5 +200,6 @@ def detect_schema(file_bytes: bytes, file_type: str) -> dict[str, Any]:
     return {
         "row_count": row_count,
         "column_count": len(df.columns),
+        "file_size_bytes": len(file_bytes),
         "columns": columns,
     }

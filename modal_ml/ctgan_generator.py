@@ -67,7 +67,7 @@ class _TrackingIter:
         self._idx += 1
         if self._idx % 10 == 0 or self._idx == self._total_epochs:
             if self._cancel_check(self._synthetic_dataset_id):
-                raise CancelledError("Generation cancelled by user")
+                raise CancelledError("Cancelled by user")
             self._on_epoch(self._idx, self._total_epochs)
         return value
 
@@ -140,7 +140,7 @@ def generate_ctgan(df: pd.DataFrame, config: dict[str, Any], synthetic_dataset_i
 
     def raise_if_cancelled() -> None:
         if cancel_check(synthetic_dataset_id):
-            raise CancelledError("Generation cancelled by user")
+            raise CancelledError("Cancelled by user")
 
     raise_if_cancelled()
     update_job_progress(synthetic_dataset_id, 5, "running", "Initializing CTGAN")
@@ -150,12 +150,12 @@ def generate_ctgan(df: pd.DataFrame, config: dict[str, Any], synthetic_dataset_i
         update_job_progress(synthetic_dataset_id, progress, "running", "Training model")
 
     with _patch_ctgan_progress(epochs, synthetic_dataset_id, on_epoch, cancel_check):
-        synthesizer.fit(data=df)
+        synthesizer.fit(data=df, discrete_columns=discrete_columns)
 
     raise_if_cancelled()
-    update_job_progress(synthetic_dataset_id, 80, "running", "Generating data")
+    update_job_progress(synthetic_dataset_id, 80, "running", "Sampling synthetic rows")
     synthetic_data = synthesizer.sample(num_rows=num_rows)
     raise_if_cancelled()
-    update_job_progress(synthetic_dataset_id, 90, "running", "Data generation completed")
+    update_job_progress(synthetic_dataset_id, 90, "running", "Validating output")
 
     return synthetic_data

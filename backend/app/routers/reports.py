@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
-import io
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 
 from app.middleware.auth import get_current_user
 from app.services.storage import storage_service
@@ -29,7 +28,6 @@ async def get_privacy_report(
     synthetic_dataset_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Return privacy score for a synthetic dataset."""
     supabase = get_supabase()
     _verify_ownership(supabase, synthetic_dataset_id, user["id"])
 
@@ -51,7 +49,6 @@ async def get_quality_report(
     synthetic_dataset_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Return quality report for a synthetic dataset."""
     supabase = get_supabase()
     _verify_ownership(supabase, synthetic_dataset_id, user["id"])
 
@@ -73,7 +70,7 @@ async def get_compliance_report(
     synthetic_dataset_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Return compliance report for a synthetic dataset."""
+    """Return compliance report plus signed PDF URL."""
     supabase = get_supabase()
     _verify_ownership(supabase, synthetic_dataset_id, user["id"])
 
@@ -87,7 +84,15 @@ async def get_compliance_report(
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Compliance report not generated yet")
-    return result.data[0]
+
+    report = result.data[0]
+    file_path = report.get("file_path")
+    if file_path:
+        report["pdf_url"] = storage_service.get_signed_url("reports", file_path, expires_in=300)
+    else:
+        report["pdf_url"] = None
+
+    return report
 
 
 @router.get("/compliance/{synthetic_dataset_id}/pdf")
@@ -95,7 +100,7 @@ async def download_compliance_pdf(
     synthetic_dataset_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Stream compliance report PDF from Supabase storage."""
+    """Redirect to signed PDF URL."""
     supabase = get_supabase()
     _verify_ownership(supabase, synthetic_dataset_id, user["id"])
 
@@ -112,18 +117,4 @@ async def download_compliance_pdf(
 
     file_path = result.data[0]["file_path"]
     signed_url = storage_service.get_signed_url("reports", file_path, expires_in=300)
-
-    import httpx
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(signed_url)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=404, detail="Failed to retrieve PDF")
-
-    return StreamingResponse(
-        io.BytesIO(resp.content),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": "attachment; filename=compliance-report.pdf",
-        },
-    )
+    return RedirectResponse(url=signed_url, status_code=307)

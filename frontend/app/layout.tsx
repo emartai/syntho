@@ -7,6 +7,7 @@ import { Toaster } from 'sonner';
 import { AuroraBackground } from '@/components/layout/AuroraBackground';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { GlobalUX } from '@/components/shared/GlobalUX';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -79,6 +80,7 @@ export default function RootLayout({
                 <QueryProvider>
                     <AuthProvider>
                         <AuroraBackground />
+                        <GlobalUX />
                         <div className="relative z-10">{children}</div>
                         <Toaster
                             position="bottom-right"
