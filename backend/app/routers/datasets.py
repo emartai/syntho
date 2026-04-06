@@ -128,8 +128,10 @@ async def list_datasets(user: dict = Depends(get_current_user)):
 
 @router.get("/{dataset_id}")
 async def get_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
+    """Return an original or synthetic dataset by id with a type discriminator."""
     supabase = get_supabase()
-    response = (
+
+    original_response = (
         supabase.table("datasets")
         .select("*")
         .eq("id", dataset_id)
@@ -137,9 +139,37 @@ async def get_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
         .limit(1)
         .execute()
     )
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-    return response.data[0]
+    if original_response.data:
+        return {
+            **original_response.data[0],
+            "type": "original",
+        }
+
+    synthetic_response = (
+        supabase.table("synthetic_datasets")
+        .select("*")
+        .eq("id", dataset_id)
+        .eq("user_id", user["id"])
+        .limit(1)
+        .execute()
+    )
+    if synthetic_response.data:
+        synthetic = synthetic_response.data[0]
+        original = (
+            supabase.table("datasets")
+            .select("id,name,file_type,row_count,column_count,created_at")
+            .eq("id", synthetic.get("original_dataset_id"))
+            .eq("user_id", user["id"])
+            .limit(1)
+            .execute()
+        )
+        return {
+            **synthetic,
+            "type": "synthetic",
+            "original_dataset": original.data[0] if original.data else None,
+        }
+
+    raise HTTPException(status_code=404, detail="Dataset not found")
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

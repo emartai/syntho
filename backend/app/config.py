@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     FRONTEND_URL: str
     ALLOWED_ORIGINS: str = ""
+    ALLOWED_ORIGIN_REGEX: str = r"https://.*\.vercel\.app"
 
     # Freemium quota
     FREE_JOBS_QUOTA: int = 10

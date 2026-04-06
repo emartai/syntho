@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 ### 2. Environment Variables
 
-Create a `.env` file in the backend directory:
+Create a `.env` file in the backend directory (see `.env.production.example` for production-safe defaults):
 
 ```env
 SUPABASE_URL=your_supabase_url
@@ -152,7 +152,7 @@ Common status codes:
 
 The Procfile is already configured:
 ```
-web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-server-header
 ```
 
 ## Security

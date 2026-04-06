@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios'
 import { createBrowserClient } from '@supabase/ssr'
+import { toast } from 'sonner'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
@@ -7,12 +8,18 @@ if (!BASE_URL && typeof window !== 'undefined') {
   console.error('[Syntho] NEXT_PUBLIC_API_URL is not set')
 }
 
-async function getAccessToken(): Promise<string | null> {
-  const supabase = createBrowserClient(
+function getSupabaseBrowserClient() {
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   )
-  const { data: { session } } = await supabase.auth.getSession()
+}
+
+async function getAccessToken(): Promise<string | null> {
+  const supabase = getSupabaseBrowserClient()
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
   return session?.access_token ?? null
 }
 
@@ -31,13 +38,34 @@ http.interceptors.request.use(async (config) => {
 
 http.interceptors.response.use(
   (res) => res,
-  (error) => {
+  async (error) => {
     const status = error.response?.status
+
     if (status === 401 && typeof window !== 'undefined') {
+      await getSupabaseBrowserClient().auth.signOut()
       window.location.href = '/login'
     }
+
+    if (status === 402 && typeof window !== 'undefined') {
+      const detail = error.response?.data?.detail
+      const message = typeof detail === 'string' ? detail : detail?.message
+      window.dispatchEvent(
+        new CustomEvent('syntho:upgrade-required', { detail: { message } }),
+      )
+    }
+
+    if (status === 429) {
+      const retryAfter = Number(error.response?.headers?.['retry-after'] ?? 0)
+      const seconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 30
+      toast.error(`Rate limited. Try again in ${seconds} seconds.`)
+    }
+
+    if (status >= 500) {
+      toast.error('Something went wrong on our end. Try again.')
+    }
+
     return Promise.reject(error)
-  }
+  },
 )
 
 function toArray<T>(data: unknown): T[] {
@@ -54,7 +82,7 @@ function toArray<T>(data: unknown): T[] {
 export async function uploadDataset(
   file: File,
   onProgress?: (pct: number) => void,
-  meta?: { name?: string; description?: string }
+  meta?: { name?: string; description?: string },
 ): Promise<any> {
   const form = new FormData()
   form.append('file', file)
@@ -105,9 +133,7 @@ export async function cancelGeneration(id: string): Promise<void> {
 }
 
 export async function listSyntheticDatasets(datasetId?: string): Promise<any[]> {
-  const url = datasetId
-    ? `/api/v1/synthetic?dataset_id=${datasetId}`
-    : '/api/v1/synthetic'
+  const url = datasetId ? `/api/v1/synthetic?dataset_id=${datasetId}` : '/api/v1/synthetic'
   const { data } = await http.get(url)
   return toArray(data)
 }
@@ -133,10 +159,7 @@ export async function getComplianceReport(syntheticId: string): Promise<any> {
 }
 
 export async function downloadCompliancePDF(syntheticId: string): Promise<void> {
-  const response = await http.get(
-    `/api/v1/reports/compliance/${syntheticId}/pdf`,
-    { responseType: 'blob' }
-  )
+  const response = await http.get(`/api/v1/reports/compliance/${syntheticId}/pdf`, { responseType: 'blob' })
   const url = URL.createObjectURL(new Blob([response.data]))
   const a = document.createElement('a')
   a.href = url
@@ -173,6 +196,23 @@ export const api = {
   reports: {
     getCompliance: (syntheticDatasetId: string) =>
       http.get(`/api/v1/reports/compliance/${syntheticDatasetId}`),
+  },
+
+  billing: {
+    status: () => http.get('/api/v1/billing/status'),
+    upgrade: (tx_ref: string) => http.post('/api/v1/billing/upgrade', { tx_ref }),
+  },
+
+  apiKeys: {
+    list: () => http.get('/api/v1/api-keys'),
+    create: (payload: { name: string; scopes: string[] }) => http.post('/api/v1/api-keys', payload),
+    revoke: (id: string) => http.delete(`/api/v1/api-keys/${id}`),
+  },
+
+  notifications: {
+    list: () => http.get('/api/v1/notifications'),
+    markRead: (id: string) => http.patch(`/api/v1/notifications/${id}/read`),
+    markAllRead: () => http.patch('/api/v1/notifications/read-all'),
   },
 }
 

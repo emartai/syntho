@@ -5,12 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { FREE_JOBS_QUOTA } from '@/lib/pricing';
-import { Database, Sparkles, Activity, Clock, Upload, ArrowUpRight, AlertCircle } from 'lucide-react';
+import { Database, Sparkles, Activity, Clock, Upload, ArrowUpRight, AlertCircle, PlayCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { StatCardSkeleton } from '@/components/shared/CardSkeleton';
 import { TableSkeleton } from '@/components/shared/TableSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { useRouter } from 'next/navigation';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -179,6 +180,11 @@ export default function DashboardPage() {
 
   const hasNoDatasets = !isLoading && (data?.totalDatasets ?? 0) === 0;
 
+  const activeJobs = (data?.recentJobs ?? []).filter(
+    (job: { status: string }) => job.status === 'running' || job.status === 'pending'
+  );
+
+
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header */}
@@ -194,13 +200,72 @@ export default function DashboardPage() {
             Overview of your synthetic data activity
           </p>
         </div>
-        <Link href="/upload">
-          <Button className="flex items-center gap-2 bg-gradient-to-r from-[#a78bfa] to-[#06b6d4] text-white border-0 hover:brightness-110">
-            <Upload className="w-4 h-4" />
-            Upload Dataset
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {plan === 'free' && jobsUsed >= FREE_JOBS_QUOTA ? (
+            <Button
+              variant="outline"
+              title="Upgrade to continue generating"
+              disabled
+              className="flex items-center gap-2"
+            >
+              <PlayCircle className="w-4 h-4" />
+              Generate
+            </Button>
+          ) : (
+            <Link href="/datasets">
+              <Button variant="outline" className="flex items-center gap-2" title="Start generation">
+                <PlayCircle className="w-4 h-4" />
+                Generate
+              </Button>
+            </Link>
+          )}
+          <Link href="/upload">
+            <Button className="flex items-center gap-2 bg-gradient-to-r from-[#a78bfa] to-[#06b6d4] text-white border-0 hover:brightness-110">
+              <Upload className="w-4 h-4" />
+              Upload Dataset
+            </Button>
+          </Link>
+        </div>
       </div>
+
+
+      {activeJobs.length > 0 && (
+        <div className="rounded-[14px] border border-[rgba(6,182,212,0.25)] bg-[rgba(6,182,212,0.08)] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-[#b8f3ff]">Active Jobs</h2>
+            <Link href="/datasets" className="text-xs text-cyan-300 hover:text-cyan-200">View all</Link>
+          </div>
+          <div className="space-y-3">
+            {activeJobs.slice(0, 2).map((job: {
+              id: string;
+              status: string;
+              progress: number;
+              datasets?: { name?: string } | null;
+            }) => (
+              <div key={job.id} className="rounded-lg border border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.03)] p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="truncate text-sm text-[#f1f0ff]">{job.datasets?.name ?? 'Dataset'}</p>
+                  <StatusBadge status={job.status} />
+                </div>
+                <Progress value={job.progress ?? 0} className="h-2" />
+                <div className="mt-2 flex items-center justify-between text-xs text-[rgba(241,240,255,0.55)]">
+                  <span>{job.progress ?? 0}% complete</span>
+                  <Link href={`/generate/${job.id}`} className="text-cyan-300 hover:text-cyan-200">View</Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+
+      {plan === 'free' && jobsUsed >= 8 && (
+        <div className={`rounded-[12px] border p-3 text-sm ${jobsUsed >= FREE_JOBS_QUOTA ? 'border-red-400/40 bg-red-500/10 text-red-200' : 'border-amber-400/40 bg-amber-500/10 text-amber-100'}`}>
+          {jobsUsed >= FREE_JOBS_QUOTA
+            ? `Monthly quota reached (${jobsUsed}/${FREE_JOBS_QUOTA}). Upgrade to continue generating datasets.`
+            : `You've used ${jobsUsed}/${FREE_JOBS_QUOTA} free jobs this month. Upgrade for unlimited access.`}
+        </div>
+      )}
 
       {/* Stats row */}
       {isLoading ? (

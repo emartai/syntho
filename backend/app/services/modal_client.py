@@ -6,45 +6,35 @@ from fastapi import HTTPException, status
 from app.config import settings
 
 
-def trigger_modal_job(job_payload: dict) -> str:
-    """Send generation payload to Modal and return Modal job ID."""
+async def trigger_modal_job(payload: dict) -> None:
+    """Trigger Modal job with one retry on connection errors."""
     headers = {
-        "X-API-Secret": settings.modal_api_secret,
+        "X-API-Secret": settings.MODAL_API_SECRET,
         "Content-Type": "application/json",
     }
 
+    async def _post() -> httpx.Response:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            return await client.post(settings.MODAL_API_URL, json=payload, headers=headers)
+
     try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(settings.modal_api_url, json=job_payload, headers=headers)
-
-        response.raise_for_status()
-        data = response.json()
-        job_id = data.get("job_id")
-        if not job_id:
+        response = await _post()
+    except httpx.ConnectError:
+        try:
+            response = await _post()
+        except httpx.ConnectError as exc:
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Modal response missing job_id",
-            )
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not connect to Modal service",
+            ) from exc
 
-        return job_id
-
-    except httpx.TimeoutException:
+    try:
+        response.raise_for_status()
+    except httpx.TimeoutException as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Timed out while contacting Modal service",
-        )
-    except httpx.ConnectError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not connect to Modal service",
-        )
+        ) from exc
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text or "Modal returned an error"
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected error while triggering Modal job",
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc

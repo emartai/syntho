@@ -78,3 +78,37 @@ def log_job_event(synthetic_dataset_id: str, event: str, message: str) -> None:
             "created_at": datetime.utcnow().isoformat(),
         }
     ).execute()
+
+
+def increment_jobs_used_this_month(user_id: str) -> None:
+    """Increment monthly jobs counter after successful generation."""
+    supabase = supabase_client()
+    response = (
+        supabase.table("profiles")
+        .select("jobs_used_this_month")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    current = 0
+    if response.data:
+        current = int(response.data[0].get("jobs_used_this_month") or 0)
+
+    supabase.table("profiles").update({"jobs_used_this_month": current + 1}).eq("id", user_id).execute()
+
+
+
+def create_notification(user_id: str, type: str, title: str, message: str, link: str | None = None) -> None:
+    """Create in-app notification for user."""
+    supabase = supabase_client()
+    supabase.table("notifications").insert(
+        {
+            "user_id": user_id,
+            "type": type,
+            "title": title,
+            "message": message,
+            "link": link,
+            "read": False,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+    ).execute()

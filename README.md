@@ -147,6 +147,8 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Deployment
 
+For production hardening, use [`DEPLOYMENT_PRODUCTION.md`](DEPLOYMENT_PRODUCTION.md).
+
 ### Modal (deploy first — get the endpoint URL)
 ```bash
 modal deploy modal_ml/main.py
@@ -234,7 +236,7 @@ Core MVP endpoints:
 
 ## Environment Variables
 
-See `.env.production.example` for the full list with documentation.
+See `backend/.env.production.example` and `frontend/.env.production.example` for production values.
 
 **Required for MVP:**
 
