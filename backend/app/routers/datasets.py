@@ -1,10 +1,10 @@
+import os
 import re
 import uuid
-from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+import magic
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.config import settings
 from app.middleware.auth import get_current_user
 from app.services.supabase import get_supabase
 from app.services.storage import storage_service
@@ -13,66 +13,78 @@ from app.services.schema_detector import detect_schema, SchemaDetectionError
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 ALLOWED_EXTENSIONS = {".csv", ".json", ".parquet", ".xlsx"}
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+ALLOWED_MIME_TYPES = {
+    "text/csv",
+    "text/plain",
+    "application/json",
+    "application/vnd.apache.parquet",
+    "application/octet-stream",  # some parquet uploads
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/zip",  # common xlsx detector output
+}
+
+FREE_MAX_FILE_SIZE = 50 * 1024 * 1024
+PAID_MAX_FILE_SIZE = 500 * 1024 * 1024
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def upload_dataset(
     file: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    description: str | None = Form(default=None),
     user: dict = Depends(get_current_user),
 ):
-    """Upload a dataset file and create database record."""
     user_id = user["id"]
     filename = file.filename or "upload.csv"
 
-    # Validate extension
     ext = ""
     if "." in filename:
         ext = "." + filename.rsplit(".", 1)[-1].lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, detail="Unsupported file type"
-        )
+        raise HTTPException(status_code=400, detail="Unsupported file type")
 
-    # Read file content
     file_bytes = await file.read()
     file_size = len(file_bytes)
 
-    # Validate size
-    if file_size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large")
+    supabase = get_supabase()
+    profile_resp = (
+        supabase.table("profiles")
+        .select("plan")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    plan = profile_resp.data[0].get("plan", "free") if profile_resp.data else "free"
+    max_size = FREE_MAX_FILE_SIZE if plan == "free" else PAID_MAX_FILE_SIZE
 
-    # Generate dataset ID and sanitize filename
+    if file_size > max_size:
+        limit_mb = 50 if plan == "free" else 500
+        raise HTTPException(status_code=413, detail=f"File exceeds {limit_mb}MB limit for your plan")
+
+    detected_mime = magic.from_buffer(file_bytes, mime=True)
+    if detected_mime not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported MIME type: {detected_mime}")
+
     dataset_id = str(uuid.uuid4())
     safe_filename = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)[:100]
-    storage_path = f"{user_id}/{dataset_id}/{safe_filename}"
-
-    # Detect MIME type from extension
-    mime_map = {
-        ".csv": "text/csv",
-        ".json": "application/json",
-        ".parquet": "application/vnd.apache.parquet",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }
-    file_type = mime_map.get(ext, "application/octet-stream")
+    random_file = f"{uuid.uuid4().hex}{ext}"
+    storage_path = f"{user_id}/{dataset_id}/{random_file}"
 
     try:
-        # Upload to storage
         storage_service.upload_file(
             bucket="datasets",
             path=storage_path,
             file_bytes=file_bytes,
-            content_type=file_type,
+            content_type=detected_mime,
         )
 
-        # Detect schema
-        schema_info = detect_schema(file_bytes, file_type)
+        schema_info = detect_schema(file_bytes, detected_mime)
 
-        supabase = get_supabase()
         dataset_data = {
             "id": dataset_id,
             "user_id": user_id,
-            "name": safe_filename,
+            "name": (name or os.path.splitext(safe_filename)[0])[:255],
+            "description": description,
             "file_path": storage_path,
             "file_size": file_size,
             "file_type": ext.lstrip("."),
@@ -91,7 +103,6 @@ async def upload_dataset(
         except Exception:
             pass
         raise HTTPException(status_code=400, detail=f"Failed to detect schema: {e}")
-
     except HTTPException:
         raise
     except Exception as e:
@@ -104,7 +115,6 @@ async def upload_dataset(
 
 @router.get("")
 async def list_datasets(user: dict = Depends(get_current_user)):
-    """List all datasets for the authenticated user. Returns raw array."""
     supabase = get_supabase()
     response = (
         supabase.table("datasets")
@@ -118,7 +128,6 @@ async def list_datasets(user: dict = Depends(get_current_user)):
 
 @router.get("/{dataset_id}")
 async def get_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
-    """Get a single dataset by ID."""
     supabase = get_supabase()
     response = (
         supabase.table("datasets")
@@ -135,7 +144,6 @@ async def get_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
-    """Delete a dataset and its associated file."""
     supabase = get_supabase()
     response = (
         supabase.table("datasets")

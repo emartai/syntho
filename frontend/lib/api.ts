@@ -36,14 +36,10 @@ http.interceptors.response.use(
     if (status === 401 && typeof window !== 'undefined') {
       window.location.href = '/login'
     }
-    if (status === 402) {
-      // Quota exceeded — let the caller handle this
-    }
     return Promise.reject(error)
   }
 )
 
-// Helper to always return an array safely
 function toArray<T>(data: unknown): T[] {
   if (Array.isArray(data)) return data
   if (data && typeof data === 'object') {
@@ -55,14 +51,15 @@ function toArray<T>(data: unknown): T[] {
   return []
 }
 
-// ── DATASETS ─────────────────────────────────────────────
-
 export async function uploadDataset(
   file: File,
-  onProgress?: (pct: number) => void
+  onProgress?: (pct: number) => void,
+  meta?: { name?: string; description?: string }
 ): Promise<any> {
   const form = new FormData()
   form.append('file', file)
+  if (meta?.name) form.append('name', meta.name)
+  if (meta?.description) form.append('description', meta.description)
 
   const { data } = await http.post('/api/v1/datasets', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -88,8 +85,6 @@ export async function getDataset(id: string): Promise<any> {
 export async function deleteDataset(id: string): Promise<void> {
   await http.delete(`/api/v1/datasets/${id}`)
 }
-
-// ── GENERATION ───────────────────────────────────────────
 
 export async function startGeneration(payload: {
   dataset_id: string
@@ -122,8 +117,6 @@ export async function downloadSynthetic(id: string): Promise<string> {
   return data?.download_url ?? data?.url ?? data
 }
 
-// ── REPORTS ──────────────────────────────────────────────
-
 export async function getPrivacyScore(syntheticId: string): Promise<any> {
   const { data } = await http.get(`/api/v1/reports/privacy/${syntheticId}`)
   return data
@@ -154,7 +147,6 @@ export async function downloadCompliancePDF(syntheticId: string): Promise<void> 
   URL.revokeObjectURL(url)
 }
 
-// ── BACKWARDS COMPAT (used by existing components) ──────
 export const api = {
   datasets: {
     list: () => http.get('/api/v1/datasets'),

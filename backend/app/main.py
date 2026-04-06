@@ -1,11 +1,13 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 import os
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.config import settings
 from app.routers import datasets, generate, reports
+from app.routers import api_keys, webhooks
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,7 +21,7 @@ async def lifespan(app: FastAPI):
     required = [
         "SUPABASE_URL",
         "SUPABASE_SERVICE_KEY",
-        "JWT_SECRET",
+        "SUPABASE_JWT_SECRET",
         "MODAL_API_URL",
         "FRONTEND_URL",
     ]
@@ -27,17 +29,17 @@ async def lifespan(app: FastAPI):
     if missing:
         raise RuntimeError(f"Missing required env vars: {missing}")
 
-    logger.info(
-        f"Syntho API v1.0.0 — CORS origins: {settings.allowed_origins_list}"
-    )
+    logger.info("Syntho API startup configuration")
+    logger.info(f"Version: {app.version}")
+    logger.info(f"Allowed origins: {settings.allowed_origins_list}")
     logger.info(f"Modal endpoint: {settings.MODAL_API_URL}")
-
-    if not settings.GROQ_API_KEY:
-        logger.warning("GROQ_API_KEY not set — Groq AI disabled (v2)")
-    if not settings.FLUTTERWAVE_SECRET_KEY:
-        logger.warning("FLUTTERWAVE_SECRET_KEY not set — payments disabled (v2)")
-    if not settings.REDIS_URL:
-        logger.warning("REDIS_URL not set — rate limiting uses in-memory fallback")
+    logger.info(
+        "Quota settings — free_jobs=%s free_rows=%s pro_rows=%s growth_rows=%s",
+        settings.FREE_JOBS_QUOTA,
+        settings.FREE_ROW_CAP,
+        settings.PRO_ROW_CAP,
+        settings.GROWTH_ROW_CAP,
+    )
     yield
 
 
@@ -60,6 +62,8 @@ app.add_middleware(
 app.include_router(datasets.router, prefix="/api/v1")
 app.include_router(generate.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
+app.include_router(api_keys.router, prefix="/api/v1")
+app.include_router(webhooks.router, prefix="/api/v1")
 
 
 @app.get("/health")
